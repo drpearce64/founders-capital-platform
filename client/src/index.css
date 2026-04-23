@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Founders Capital — dark navy fintech palette */
+    --background: 222 47% 8%;
+    --foreground: 210 20% 90%;
+
+    --card: 222 40% 11%;
+    --card-foreground: 210 20% 90%;
+
+    --popover: 222 40% 11%;
+    --popover-foreground: 210 20% 90%;
+
+    --primary: 213 94% 62%;
+    --primary-foreground: 222 47% 8%;
+
+    --secondary: 222 35% 16%;
+    --secondary-foreground: 210 20% 80%;
+
+    --muted: 222 35% 14%;
+    --muted-foreground: 210 15% 55%;
+
+    --accent: 213 94% 62%;
+    --accent-foreground: 222 47% 8%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 210 20% 98%;
+
+    --border: 222 30% 18%;
+    --input: 222 35% 14%;
+    --ring: 213 94% 62%;
+
+    --radius: 0.5rem;
+
+    --sidebar-bg: 222 50% 6%;
+    --sidebar-border: 222 30% 14%;
+
+    --success: 142 71% 42%;
+    --warning: 38 92% 52%;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  min-height: 100dvh;
+  line-height: 1.6;
+}
+
+/* Mono for numbers */
+.mono {
+  font-family: 'DM Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
