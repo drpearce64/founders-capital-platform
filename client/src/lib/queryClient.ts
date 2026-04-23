@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL || "__PORT_5000__";
+const API_BASE = (import.meta as any).env?.VITE_API_URL || "https://founders-capital-platform-production.up.railway.app";
 
 export const queryClient = new QueryClient({
   defaultOptions: {

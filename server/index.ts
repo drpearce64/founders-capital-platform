@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
@@ -13,6 +14,9 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+// Allow all origins — this is a private internal tool
+app.use(cors());
 
 app.use(
   express.json({
