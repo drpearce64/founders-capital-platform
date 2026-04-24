@@ -118,34 +118,34 @@ export default function Dashboard() {
                 className="rounded-xl p-5 border"
                 style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
-                        {spv.name}
-                      </div>
-                      {spv.investments && spv.investments.length > 0 && (
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}
-                        >
-                          {spv.investments[0].company_name}
-                        </span>
-                      )}
+                <div className="mb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-sm font-semibold leading-snug" style={{ color: "hsl(var(--foreground))" }}>
+                      {spv.name}
                     </div>
-                    <div className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
+                      style={{
+                        background: spv.status === 'active' ? "hsl(142 71% 42% / 0.15)" : "hsl(var(--secondary))",
+                        color: spv.status === 'active' ? "hsl(142 71% 55%)" : "hsl(var(--muted-foreground))",
+                      }}
+                    >
+                      {spv.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
                       {spv.short_code}
                     </div>
+                    {spv.investments && spv.investments.length > 0 && (
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}
+                      >
+                        {spv.investments[0].company_name}
+                      </span>
+                    )}
                   </div>
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{
-                      background: spv.status === 'active' ? "hsl(142 71% 42% / 0.15)" : "hsl(var(--secondary))",
-                      color: spv.status === 'active' ? "hsl(142 71% 55%)" : "hsl(var(--muted-foreground))",
-                    }}
-                  >
-                    {spv.status}
-                  </span>
                 </div>
                 <div className="space-y-1 text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
                   {spv.bank_account_no && (
