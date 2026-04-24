@@ -200,7 +200,17 @@ export default function Dashboard() {
                       borderBottom: "1px solid hsl(var(--border))",
                     }}
                   >
-                    <td className="px-5 py-3 font-medium" style={{ color: "hsl(var(--foreground))" }}>{inv.company_name}</td>
+                    <td className="px-5 py-3" style={{ color: "hsl(var(--foreground))" }}>
+                      <div className="flex items-center gap-2">
+                        {inv.entities?.short_code && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
+                            style={{ background: "hsl(var(--secondary))", color: "hsl(var(--muted-foreground))" }}>
+                            {inv.entities.short_code.replace("FC-", "")}
+                          </span>
+                        )}
+                        <span className="font-medium">{inv.company_name}</span>
+                      </div>
+                    </td>
                     <td className="px-5 py-3 text-right mono" style={{ color: "hsl(var(--foreground))" }}>{fmtUSD(inv.cost_basis)}</td>
                     <td className="px-5 py-3 text-right mono" style={{ color: "hsl(var(--foreground))" }}>{fmtUSD(inv.current_fair_value)}</td>
                     <td className="px-5 py-3 text-right">

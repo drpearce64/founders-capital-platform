@@ -180,7 +180,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const [entitiesRes, commitmentsRes, investmentsRes, callsRes] = await Promise.all([
       supabase.from("entities").select("*, investments(company_name, status)").is("archived_at", null),
       supabase.from("investor_commitments").select("committed_amount, called_amount, status, entity_id").is("archived_at", null),
-      supabase.from("investments").select("cost_basis, current_fair_value, company_name, entity_id, status").is("archived_at", null),
+      supabase.from("investments").select("cost_basis, current_fair_value, company_name, entity_id, status, entities(short_code)").is("archived_at", null),
       supabase.from("capital_calls").select("total_call_amount, status, entity_id"),
     ]);
 
