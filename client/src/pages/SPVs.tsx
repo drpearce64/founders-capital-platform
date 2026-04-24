@@ -4,10 +4,14 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, X } from "lucide-react";
 
+interface Investment {
+  company_name: string; deal_code: string; status: string;
+}
 interface Entity {
   id: string; name: string; short_code: string; entity_type: string;
   jurisdiction: string; bank_name: string | null; bank_account_no: string | null;
   bank_swift: string | null; hsbc_account_ref: string | null; status: string;
+  investments?: Investment[];
 }
 
 const INPUT_CLASS = "w-full px-3 py-2 rounded-lg text-sm border outline-none transition-colors";
@@ -169,7 +173,15 @@ export default function SPVs() {
               style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="font-semibold text-sm" style={{ color: "hsl(var(--foreground))" }}>{spv.name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-semibold text-sm" style={{ color: "hsl(var(--foreground))" }}>{spv.name}</div>
+                    {spv.investments && spv.investments.length > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}>
+                        {spv.investments[0].company_name}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs mt-0.5 mono" style={{ color: "hsl(var(--muted-foreground))" }}>{spv.short_code} · {spv.jurisdiction}</div>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full font-medium"

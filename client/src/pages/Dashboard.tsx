@@ -120,8 +120,18 @@ export default function Dashboard() {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <div className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
-                      {spv.name}
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+                        {spv.name}
+                      </div>
+                      {spv.investments && spv.investments.length > 0 && (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-medium"
+                          style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}
+                        >
+                          {spv.investments[0].company_name}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
                       {spv.short_code}
