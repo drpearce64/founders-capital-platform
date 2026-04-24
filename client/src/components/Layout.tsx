@@ -1,15 +1,26 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield } from "lucide-react";
+import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog } from "lucide-react";
 
 const nav = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/spvs", label: "SPVs", icon: Building2 },
-  { href: "/lp-onboarding", label: "Onboard LP", icon: UserPlus },
-  { href: "/lp-register", label: "LP Register", icon: Users },
-  { href: "/capital-calls", label: "Capital Calls", icon: Phone },
-  { href: "/waterfall", label: "Waterfall", icon: TrendingUp },
-  { href: "/audit-log", label: "Audit Log", icon: Shield },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, section: "overview" },
+  { href: "/spvs", label: "SPVs", icon: Building2, section: "overview" },
+  { href: "/lp-onboarding", label: "Onboard LP", icon: UserPlus, section: "lps" },
+  { href: "/lp-register", label: "LP Register", icon: Users, section: "lps" },
+  { href: "/capital-calls", label: "Capital Calls", icon: Phone, section: "finance" },
+  { href: "/series-expenses", label: "Series Expenses", icon: Receipt, section: "finance" },
+  { href: "/waterfall", label: "Waterfall", icon: TrendingUp, section: "finance" },
+  { href: "/nav-marks", label: "NAV / Fair Value", icon: BarChart3, section: "finance" },
+  { href: "/documents", label: "Documents", icon: FolderOpen, section: "admin" },
+  { href: "/audit-log", label: "Audit Log", icon: Shield, section: "admin" },
+  { href: "/settings", label: "Users & Roles", icon: UserCog, section: "admin" },
 ];
+
+const sections: Record<string, string> = {
+  overview: "Overview",
+  lps: "Investors",
+  finance: "Finance",
+  admin: "Administration",
+};
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -41,25 +52,37 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {nav.map(({ href, label, icon: Icon }) => {
-            const active = location === href;
+        <nav className="flex-1 px-3 py-4 overflow-y-auto">
+          {Object.entries(sections).map(([sectionKey, sectionLabel]) => {
+            const items = nav.filter(n => n.section === sectionKey);
             return (
-              <Link key={href} href={href}>
-                <a
-                  data-testid={`nav-${label.toLowerCase().replace(/\s+/g, "-")}`}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors"
-                  style={{
-                    background: active ? "hsl(213 94% 62% / 0.12)" : "transparent",
-                    color: active ? "hsl(213 94% 62%)" : "hsl(var(--muted-foreground))",
-                  }}
-                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "hsl(var(--secondary))"; (e.currentTarget as HTMLElement).style.color = "hsl(var(--foreground))"; }}
-                  onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "hsl(var(--muted-foreground))"; } }}
-                >
-                  <Icon size={16} />
-                  {label}
-                </a>
-              </Link>
+              <div key={sectionKey} className="mb-4">
+                <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground) / 0.6)" }}>
+                  {sectionLabel}
+                </p>
+                <div className="space-y-0.5">
+                  {items.map(({ href, label, icon: Icon }) => {
+                    const active = location === href;
+                    return (
+                      <Link key={href} href={href}>
+                        <a
+                          data-testid={`nav-${label.toLowerCase().replace(/\s+/g, "-")}`}
+                          className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                          style={{
+                            background: active ? "hsl(213 94% 62% / 0.12)" : "transparent",
+                            color: active ? "hsl(213 94% 62%)" : "hsl(var(--muted-foreground))",
+                          }}
+                          onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "hsl(var(--secondary))"; (e.currentTarget as HTMLElement).style.color = "hsl(var(--foreground))"; } }}
+                          onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "hsl(var(--muted-foreground))"; } }}
+                        >
+                          <Icon size={15} />
+                          {label}
+                        </a>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </nav>

@@ -11,6 +11,10 @@ import LPRegister from "./pages/LPRegister";
 import CapitalCalls from "./pages/CapitalCalls";
 import Waterfall from "./pages/Waterfall";
 import AuditLog from "./pages/AuditLog";
+import SeriesExpenses from "./pages/SeriesExpenses";
+import NAVMarks from "./pages/NAVMarks";
+import Documents from "./pages/Documents";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/not-found";
 
 export default function App() {
@@ -26,6 +30,10 @@ export default function App() {
             <Route path="/capital-calls" component={CapitalCalls} />
             <Route path="/waterfall" component={Waterfall} />
             <Route path="/audit-log" component={AuditLog} />
+            <Route path="/series-expenses" component={SeriesExpenses} />
+            <Route path="/nav-marks" component={NAVMarks} />
+            <Route path="/documents" component={Documents} />
+            <Route path="/settings" component={Settings} />
             <Route component={NotFound} />
           </Switch>
         </Layout>
