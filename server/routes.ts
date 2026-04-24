@@ -8,7 +8,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/entities", async (_req, res) => {
     const { data, error } = await supabase
       .from("entities")
-      .select("*, investments(company_name, deal_code, status)")
+      .select("*, investments(company_name, status)")
       .is("archived_at", null)
       .order("entity_type")
       .order("name");
@@ -178,7 +178,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/dashboard", async (_req, res) => {
     const [entitiesRes, commitmentsRes, investmentsRes, callsRes] = await Promise.all([
-      supabase.from("entities").select("*, investments(company_name, deal_code, status)").is("archived_at", null),
+      supabase.from("entities").select("*, investments(company_name, status)").is("archived_at", null),
       supabase.from("investor_commitments").select("committed_amount, called_amount, status, entity_id").is("archived_at", null),
       supabase.from("investments").select("cost_basis, current_fair_value, company_name, entity_id, status").is("archived_at", null),
       supabase.from("capital_calls").select("total_call_amount, status, entity_id"),
