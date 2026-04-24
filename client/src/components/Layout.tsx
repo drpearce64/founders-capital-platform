@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Building2, Users, UserPlus, Phone } from "lucide-react";
+import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -7,6 +7,8 @@ const nav = [
   { href: "/lp-onboarding", label: "Onboard LP", icon: UserPlus },
   { href: "/lp-register", label: "LP Register", icon: Users },
   { href: "/capital-calls", label: "Capital Calls", icon: Phone },
+  { href: "/waterfall", label: "Waterfall", icon: TrendingUp },
+  { href: "/audit-log", label: "Audit Log", icon: Shield },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {

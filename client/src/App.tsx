@@ -9,6 +9,8 @@ import SPVs from "./pages/SPVs";
 import LPOnboarding from "./pages/LPOnboarding";
 import LPRegister from "./pages/LPRegister";
 import CapitalCalls from "./pages/CapitalCalls";
+import Waterfall from "./pages/Waterfall";
+import AuditLog from "./pages/AuditLog";
 import NotFound from "./pages/not-found";
 
 export default function App() {
@@ -22,6 +24,8 @@ export default function App() {
             <Route path="/lp-onboarding" component={LPOnboarding} />
             <Route path="/lp-register" component={LPRegister} />
             <Route path="/capital-calls" component={CapitalCalls} />
+            <Route path="/waterfall" component={Waterfall} />
+            <Route path="/audit-log" component={AuditLog} />
             <Route component={NotFound} />
           </Switch>
         </Layout>
