@@ -158,9 +158,14 @@ export default function LPOnboarding() {
               <select data-testid="select-entity" required className={SELECT_CLASS} style={STYLE}
                 value={form.entity_id} onChange={set("entity_id")}>
                 <option value="">Select a Series SPV…</option>
-                {spvs.map((e: any) => (
-                  <option key={e.id} value={e.id}>{e.name} ({e.short_code})</option>
-                ))}
+                {spvs.map((e: any) => {
+                  const inv = e.investments?.[0]?.company_name;
+                  return (
+                    <option key={e.id} value={e.id}>
+                      {e.name} ({e.short_code}){inv ? ` — ${inv}` : ""}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div>

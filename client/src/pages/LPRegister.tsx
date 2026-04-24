@@ -87,9 +87,14 @@ export default function LPRegister() {
           onChange={e => setEntityFilter(e.target.value)}
         >
           <option value="all">All SPVs</option>
-          {spvs.map((e: any) => (
-            <option key={e.id} value={e.id}>{e.short_code}</option>
-          ))}
+          {spvs.map((e: any) => {
+            const inv = e.investments?.[0]?.company_name;
+            return (
+              <option key={e.id} value={e.id}>
+                {e.short_code}{inv ? ` — ${inv}` : ""}
+              </option>
+            );
+          })}
         </select>
       </div>
 
@@ -136,7 +141,19 @@ export default function LPRegister() {
                       {c.investors?.email ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                      {c.entities?.short_code ?? "—"}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{c.entities?.short_code ?? "—"}</span>
+                        {(() => {
+                          const spv = spvs.find((e: any) => e.id === c.entity_id);
+                          const inv = spv?.investments?.[0]?.company_name;
+                          return inv ? (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                              style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}>
+                              {inv}
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right mono" style={{ color: "hsl(var(--foreground))" }}>
                       {fmtUSD(c.committed_amount)}

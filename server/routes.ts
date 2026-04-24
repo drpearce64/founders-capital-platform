@@ -106,7 +106,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { entity_id } = req.query;
     let query = supabase
       .from("capital_calls")
-      .select("*, entities(name, short_code)");
+      .select("*, entities(name, short_code, investments(company_name))");
 
     if (entity_id) query = query.eq("entity_id", entity_id as string);
 

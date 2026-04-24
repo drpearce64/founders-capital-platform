@@ -54,10 +54,16 @@ function CallRow({ call }: { call: any }) {
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
         <div className="flex-1">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
               Call #{call.call_number} — {call.entities?.short_code ?? call.entity_id}
             </span>
+            {call.entities?.investments?.[0]?.company_name && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}>
+                {call.entities.investments[0].company_name}
+              </span>
+            )}
             <span className="text-xs px-2 py-0.5 rounded-full font-medium"
               style={{ background: sc.bg, color: sc.color }}>
               {call.status.replace("_", " ")}
@@ -222,9 +228,14 @@ export default function CapitalCalls() {
                 <select required className="w-full px-3 py-2 rounded-lg text-sm border outline-none appearance-none" style={STYLE}
                   value={form.entity_id} onChange={e => onEntityChange(e.target.value)}>
                   <option value="">Select SPV…</option>
-                  {spvs.map((e: any) => (
-                    <option key={e.id} value={e.id}>{e.name} ({e.short_code})</option>
-                  ))}
+                  {spvs.map((e: any) => {
+                    const inv = e.investments?.[0]?.company_name;
+                    return (
+                      <option key={e.id} value={e.id}>
+                        {e.name} ({e.short_code}){inv ? ` — ${inv}` : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               <div>
