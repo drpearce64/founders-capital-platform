@@ -12,6 +12,7 @@ import CapitalCalls from "./pages/CapitalCalls";
 import Waterfall from "./pages/Waterfall";
 import AuditLog from "./pages/AuditLog";
 import SeriesExpenses from "./pages/SeriesExpenses";
+import LPPortfolio from "./pages/LPPortfolio";
 import NAVMarks from "./pages/NAVMarks";
 import Documents from "./pages/Documents";
 import Settings from "./pages/Settings";
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="/waterfall" component={Waterfall} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/series-expenses" component={SeriesExpenses} />
+            <Route path="/lp-portfolio" component={LPPortfolio} />
             <Route path="/nav-marks" component={NAVMarks} />
             <Route path="/documents" component={Documents} />
             <Route path="/settings" component={Settings} />

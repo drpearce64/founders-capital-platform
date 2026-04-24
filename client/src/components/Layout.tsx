@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog } from "lucide-react";
+import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog, Layers } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, section: "overview" },
   { href: "/spvs", label: "SPVs", icon: Building2, section: "overview" },
   { href: "/lp-onboarding", label: "Onboard LP", icon: UserPlus, section: "lps" },
   { href: "/lp-register", label: "LP Register", icon: Users, section: "lps" },
+  { href: "/lp-portfolio", label: "LP Portfolio", icon: Layers, section: "lps" },
   { href: "/capital-calls", label: "Capital Calls", icon: Phone, section: "finance" },
   { href: "/series-expenses", label: "Series Expenses", icon: Receipt, section: "finance" },
   { href: "/waterfall", label: "Waterfall", icon: TrendingUp, section: "finance" },
