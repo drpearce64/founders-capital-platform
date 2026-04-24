@@ -4,42 +4,44 @@
 
 @layer base {
   :root {
-    /* Founders Capital — dark navy fintech palette */
-    --background: 222 47% 8%;
-    --foreground: 210 20% 90%;
+    /* Founders Capital — brand palette */
+    /* Background: warm cream #F5F3EF | Text: near-black warm brown #1A1209 | Primary: cobalt blue #3B5BDB */
 
-    --card: 222 40% 11%;
-    --card-foreground: 210 20% 90%;
+    --background: 40 18% 95%;       /* #F5F3EF warm cream */
+    --foreground: 36 82% 7%;        /* #1A1209 near-black warm brown */
 
-    --popover: 222 40% 11%;
-    --popover-foreground: 210 20% 90%;
+    --card: 40 18% 97%;             /* slightly lighter cream for cards */
+    --card-foreground: 36 82% 7%;
 
-    --primary: 213 94% 62%;
-    --primary-foreground: 222 47% 8%;
+    --popover: 40 18% 97%;
+    --popover-foreground: 36 82% 7%;
 
-    --secondary: 222 35% 16%;
-    --secondary-foreground: 210 20% 80%;
+    --primary: 231 70% 54%;         /* #3B5BDB royal/cobalt blue */
+    --primary-foreground: 0 0% 100%;
 
-    --muted: 222 35% 14%;
-    --muted-foreground: 210 15% 55%;
+    --secondary: 40 14% 88%;        /* warm off-white secondary surface */
+    --secondary-foreground: 36 82% 7%;
 
-    --accent: 213 94% 62%;
-    --accent-foreground: 222 47% 8%;
+    --muted: 40 12% 90%;            /* very light warm grey */
+    --muted-foreground: 36 20% 45%; /* warm mid-grey for secondary text */
 
-    --destructive: 0 72% 55%;
-    --destructive-foreground: 210 20% 98%;
+    --accent: 231 70% 54%;          /* cobalt blue accent */
+    --accent-foreground: 0 0% 100%;
 
-    --border: 222 30% 18%;
-    --input: 222 35% 14%;
-    --ring: 213 94% 62%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 36 12% 84%;           /* warm light grey border */
+    --input: 40 14% 88%;
+    --ring: 231 70% 54%;
 
     --radius: 0.5rem;
 
-    --sidebar-bg: 222 50% 6%;
-    --sidebar-border: 222 30% 14%;
+    --sidebar-bg: 36 82% 7%;        /* #1A1209 dark near-black sidebar */
+    --sidebar-border: 36 50% 12%;   /* slightly lighter dark border */
 
-    --success: 142 71% 42%;
-    --warning: 38 92% 52%;
+    --success: 103 56% 31%;         /* #437A22 */
+    --warning: 38 92% 52%;          /* amber */
   }
 }
 

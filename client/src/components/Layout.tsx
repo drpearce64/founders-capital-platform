@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog, Layers } from "lucide-react";
+import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, section: "overview" },
@@ -12,6 +12,7 @@ const nav = [
   { href: "/waterfall", label: "Waterfall", icon: TrendingUp, section: "finance" },
   { href: "/nav-marks", label: "NAV / Fair Value", icon: BarChart3, section: "finance" },
   { href: "/documents", label: "Documents", icon: FolderOpen, section: "admin" },
+  { href: "/statements", label: "Statements", icon: FileText, section: "admin" },
   { href: "/audit-log", label: "Audit Log", icon: Shield, section: "admin" },
   { href: "/settings", label: "Users & Roles", icon: UserCog, section: "admin" },
 ];
@@ -38,15 +39,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b" style={{ borderColor: "hsl(var(--sidebar-border))" }}>
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="Founders Capital">
-            <rect width="28" height="28" rx="6" fill="hsl(213 94% 62%)"/>
-            <path d="M7 8h14M7 14h9M7 20h12" stroke="hsl(222 47% 8%)" strokeWidth="2.2" strokeLinecap="round"/>
+          {/* FC geometric grid-square mark — mirrors the 3×3 dot grid on founders-capital.com */}
+          <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-label="Founders Capital" role="img">
+            <rect width="30" height="30" rx="6" fill="#3B5BDB"/>
+            {/* 3×3 grid of rounded squares */}
+            <rect x="6"  y="6"  width="5" height="5" rx="1.2" fill="white"/>
+            <rect x="12.5" y="6"  width="5" height="5" rx="1.2" fill="white"/>
+            <rect x="19" y="6"  width="5" height="5" rx="1.2" fill="white"/>
+            <rect x="6"  y="12.5" width="5" height="5" rx="1.2" fill="white"/>
+            <rect x="12.5" y="12.5" width="5" height="5" rx="1.2" fill="white" opacity="0.45"/>
+            <rect x="19" y="12.5" width="5" height="5" rx="1.2" fill="white"/>
+            <rect x="6"  y="19" width="5" height="5" rx="1.2" fill="white"/>
+            <rect x="12.5" y="19" width="5" height="5" rx="1.2" fill="white"/>
+            <rect x="19" y="19" width="5" height="5" rx="1.2" fill="white" opacity="0.45"/>
           </svg>
           <div>
-            <div className="text-sm font-semibold leading-tight" style={{ color: "hsl(var(--foreground))" }}>
+            <div className="text-sm font-semibold leading-tight" style={{ color: "hsl(0 0% 95%)" }}>
               Founders Capital
             </div>
-            <div className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+            <div className="text-xs" style={{ color: "hsl(0 0% 55%)" }}>
               Platform LLC
             </div>
           </div>
@@ -70,11 +81,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                           data-testid={`nav-${label.toLowerCase().replace(/\s+/g, "-")}`}
                           className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors"
                           style={{
-                            background: active ? "hsl(213 94% 62% / 0.12)" : "transparent",
-                            color: active ? "hsl(213 94% 62%)" : "hsl(var(--muted-foreground))",
+                            background: active ? "hsl(231 70% 54% / 0.18)" : "transparent",
+                            color: active ? "hsl(231 70% 72%)" : "hsl(0 0% 60%)",
                           }}
-                          onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "hsl(var(--secondary))"; (e.currentTarget as HTMLElement).style.color = "hsl(var(--foreground))"; } }}
-                          onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "hsl(var(--muted-foreground))"; } }}
+                          onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "hsl(0 0% 100% / 0.06)"; (e.currentTarget as HTMLElement).style.color = "hsl(0 0% 88%)"; } }}
+                          onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "hsl(0 0% 60%)"; } }}
                         >
                           <Icon size={15} />
                           {label}

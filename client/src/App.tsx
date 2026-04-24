@@ -16,6 +16,7 @@ import LPPortfolio from "./pages/LPPortfolio";
 import NAVMarks from "./pages/NAVMarks";
 import Documents from "./pages/Documents";
 import Settings from "./pages/Settings";
+import QuarterlyStatements from "./pages/QuarterlyStatements";
 import NotFound from "./pages/not-found";
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="/nav-marks" component={NAVMarks} />
             <Route path="/documents" component={Documents} />
             <Route path="/settings" component={Settings} />
+            <Route path="/statements" component={QuarterlyStatements} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

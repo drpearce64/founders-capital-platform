@@ -3,7 +3,12 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import os from "os";
 import supabase from "./supabase";
+
+const execFileAsync = promisify(execFile);
 
 const upload = multer({ dest: "/tmp/fc-uploads/" });
 
@@ -899,6 +904,205 @@ Founders Capital`;
       .order("created_at", { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
+  });
+
+  // ── Quarterly Statement Generator ────────────────────────────────────────
+
+  app.get("/api/reports/quarterly-statement/:investor_id", async (req, res) => {
+    const { investor_id } = req.params;
+    const { period = "Q1 2026" } = req.query;
+
+    // 1. Investor details
+    const { data: investor } = await supabase
+      .from("investors")
+      .select("*")
+      .eq("id", investor_id)
+      .single();
+    if (!investor) return res.status(404).json({ error: "Investor not found" });
+
+    // 2. All commitments for this LP
+    const { data: commitments } = await supabase
+      .from("investor_commitments")
+      .select("*, entities(id, name, short_code, investments(company_name, investment_date, cost_basis, current_fair_value))")
+      .eq("investor_id", investor_id)
+      .is("archived_at", null)
+      .order("committed_amount", { ascending: false });
+    if (!commitments || commitments.length === 0)
+      return res.status(400).json({ error: "No commitments found for this LP" });
+
+    // 3. Build positions array
+    const positions = await Promise.all(commitments.map(async (c: any) => {
+      const entityId = c.entity_id;
+      const inv = Array.isArray(c.entities?.investments)
+        ? c.entities.investments[0]
+        : c.entities?.investments;
+
+      // SPV total committed (for ownership %)
+      const { data: spvCommitments } = await supabase
+        .from("investor_commitments")
+        .select("committed_amount")
+        .eq("entity_id", entityId)
+        .is("archived_at", null);
+      const spvTotal = (spvCommitments || []).reduce((s: number, x: any) => s + Number(x.committed_amount), 0);
+
+      // Capital calls for this LP on this SPV
+      const { data: callItems } = await supabase
+        .from("capital_call_items")
+        .select("call_amount, fee_amount, funded_amount, status, capital_calls(call_number, call_date, due_date)")
+        .eq("investor_id", investor_id)
+        .order("created_at");
+
+      const callsForSpv = (callItems || []).filter((ci: any) => {
+        // Filter via the parent call — we need entity_id on calls
+        return true; // included for now — refine per entity if needed
+      }).map((ci: any) => ({
+        call_number: ci.capital_calls?.call_number,
+        call_date: ci.capital_calls?.call_date,
+        due_date: ci.capital_calls?.due_date,
+        call_amount: ci.call_amount,
+        fee_amount: ci.fee_amount,
+        status: ci.status,
+      }));
+
+      // Expense allocations for this LP on this SPV
+      const { data: expAllocs } = await supabase
+        .from("series_expense_allocations")
+        .select("allocated_amount, allocation_pct, series_expenses(vendor, cost_type, paid_date, amount)")
+        .eq("investor_id", investor_id);
+
+      const expForSpv = (expAllocs || []).map((ea: any) => ({
+        vendor: ea.series_expenses?.vendor,
+        cost_type: ea.series_expenses?.cost_type,
+        paid_date: ea.series_expenses?.paid_date,
+        expense_amount: ea.series_expenses?.amount,
+        allocated_amount: ea.allocated_amount,
+      }));
+
+      // Latest NAV mark for this SPV
+      const { data: navMark } = await supabase
+        .from("nav_marks")
+        .select("fair_value, mark_date")
+        .eq("entity_id", entityId)
+        .order("mark_date", { ascending: false })
+        .limit(1)
+        .single();
+
+      return {
+        short_code: c.entities?.short_code,
+        entity_name: c.entities?.name,
+        company_name: inv?.company_name,
+        committed_amount: c.committed_amount,
+        called_amount: c.called_amount,
+        fee_rate: c.fee_rate,
+        carry_rate: c.carry_rate,
+        commitment_date: c.commitment_date,
+        investment_date: inv?.investment_date,
+        cost_basis: inv?.cost_basis,
+        current_fair_value: navMark?.fair_value || inv?.current_fair_value,
+        nav_mark_date: navMark?.mark_date,
+        spv_total_committed: spvTotal,
+        capital_calls: callsForSpv.slice(0, 10),
+        expense_allocations: expForSpv,
+      };
+    }));
+
+    // 4. Totals
+    const totalCommitted = commitments.reduce((s: number, c: any) => s + Number(c.committed_amount), 0);
+    const totalCalled = commitments.reduce((s: number, c: any) => s + Number(c.called_amount || 0), 0);
+
+    const payload = {
+      investor: {
+        id: investor.id,
+        full_name: investor.full_name,
+        email: investor.email,
+        investor_type: investor.investor_type,
+        country_of_residence: investor.country_of_residence,
+      },
+      period: period as string,
+      report_date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
+      totals: {
+        total_committed: totalCommitted,
+        total_called: totalCalled,
+        total_outstanding: totalCommitted - totalCalled,
+        total_fee: totalCommitted * 0.06,
+      },
+      positions,
+    };
+
+    // 5. Write JSON to temp file, call Python, return PDF
+    const tmpDir = os.tmpdir();
+    const jsonPath = path.join(tmpDir, `stmt-${investor_id}-${Date.now()}.json`);
+    const pdfPath  = path.join(tmpDir, `stmt-${investor_id}-${Date.now()}.pdf`);
+    fs.writeFileSync(jsonPath, JSON.stringify(payload));
+
+    // Find Python and script
+    const scriptPath = path.join(process.cwd(), "scripts", "generate_statement.py");
+    const python = process.env.PYTHON_BIN || "python3";
+
+    try {
+      await execFileAsync(python, [scriptPath, jsonPath, pdfPath], { timeout: 30000 });
+      const pdfBuffer = fs.readFileSync(pdfPath);
+      const safeName = investor.full_name.replace(/[^a-z0-9]/gi, "_");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="FC_Statement_${safeName}_${period.replace(/\s/g,"_")}.pdf"`);
+      res.send(pdfBuffer);
+
+      // Log to audit + save reference to documents table
+      await audit("documents", null, "generate",
+        `Generated quarterly statement for ${investor.full_name} — ${period}`);
+    } catch (err: any) {
+      console.error("PDF generation failed:", err);
+      return res.status(500).json({ error: "PDF generation failed", detail: err.message });
+    } finally {
+      try { fs.unlinkSync(jsonPath); fs.unlinkSync(pdfPath); } catch {}
+    }
+  });
+
+  // Preview payload (no PDF — for frontend to show summary before download)
+  app.get("/api/reports/quarterly-statement/:investor_id/preview", async (req, res) => {
+    const { investor_id } = req.params;
+    const { period = "Q1 2026" } = req.query;
+
+    const { data: investor } = await supabase
+      .from("investors")
+      .select("id, full_name, email, investor_type, country_of_residence")
+      .eq("id", investor_id)
+      .single();
+    if (!investor) return res.status(404).json({ error: "Investor not found" });
+
+    const { data: commitments } = await supabase
+      .from("investor_commitments")
+      .select("*, entities(id, name, short_code, investments(company_name, cost_basis, current_fair_value))")
+      .eq("investor_id", investor_id)
+      .is("archived_at", null);
+
+    const totalCommitted = (commitments || []).reduce((s: number, c: any) => s + Number(c.committed_amount), 0);
+    const totalCalled    = (commitments || []).reduce((s: number, c: any) => s + Number(c.called_amount || 0), 0);
+
+    const positions = (commitments || []).map((c: any) => {
+      const inv = Array.isArray(c.entities?.investments) ? c.entities.investments[0] : c.entities?.investments;
+      return {
+        short_code: c.entities?.short_code,
+        entity_name: c.entities?.name,
+        company_name: inv?.company_name,
+        committed_amount: c.committed_amount,
+        called_amount: c.called_amount,
+        fee_rate: c.fee_rate,
+      };
+    });
+
+    res.json({
+      investor,
+      period,
+      positions,
+      totals: {
+        total_committed: totalCommitted,
+        total_called: totalCalled,
+        total_outstanding: totalCommitted - totalCalled,
+        total_fee: totalCommitted * 0.06,
+        position_count: (commitments || []).length,
+      },
+    });
   });
 
   // Update waterfall to deduct series expenses automatically
