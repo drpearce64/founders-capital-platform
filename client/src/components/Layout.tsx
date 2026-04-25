@@ -20,7 +20,7 @@ const delawareNav = [
   { href: "/nav-marks",       label: "NAV / Fair Value",       icon: BarChart3,       section: "finance" },
   { href: "/tax-accounts",    label: "Tax & Capital Accounts", icon: BookOpen,        section: "finance" },
   { href: "/accounts-payable",label: "Accounts Payable",       icon: FileCheck,       section: "finance" },
-  { href: "/group-structure", label: "Group Structure",        icon: Network,         section: "finance" },
+  { href: "/group-structure", label: "Group Structure",        icon: Network,         section: "group" },
   { href: "/statements",      label: "Statements",             icon: FileText,        section: "reporting" },
   { href: "/airtable-sync",   label: "Airtable Sync",          icon: RefreshCw,       section: "reporting" },
   { href: "/pl-model",        label: "P&L Model",              icon: FileSpreadsheet, section: "reporting" },
@@ -35,6 +35,7 @@ const delawareSections: Record<string, string> = {
   finance:   "Finance",
   reporting: "Reporting",
   admin:     "Administration",
+  group:     "Group",
 };
 
 // ── Cayman nav ────────────────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ const caymanNav = [
   { href: "/cayman/capital-calls",   label: "Capital Calls",   icon: Phone,           section: "investors" },
   { href: "/cayman/nav",             label: "NAV / Fair Value", icon: BarChart3,      section: "finance" },
   { href: "/cayman/accounts-payable",label: "Accounts Payable", icon: FileCheck,      section: "finance" },
+  { href: "/group-structure",         label: "Group Structure", icon: Network,         section: "group" },
   { href: "/statements",             label: "Statements",      icon: FileText,        section: "reporting" },
   { href: "/documents",              label: "Documents",       icon: FolderOpen,      section: "admin" },
   { href: "/audit-log",              label: "Audit Log",       icon: Shield,          section: "admin" },
@@ -54,6 +56,7 @@ const caymanSections: Record<string, string> = {
   overview:  "Overview",
   investors: "Investors",
   finance:   "Finance",
+  group:     "Group",
   reporting: "Reporting",
   admin:     "Administration",
 };

@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { fmtUSD, fmtDate } from "@/lib/utils";
-import { TrendingUp, Users, Building2, DollarSign, AlertCircle } from "lucide-react";
+import { TrendingUp, Users, Building2, DollarSign, AlertCircle, Network, ChevronRight, X } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 interface DashboardData {
   spv_count: number;
@@ -47,7 +49,107 @@ function StatCard({ label, value, sub, icon: Icon, accent }: {
   );
 }
 
+// ── Delaware Entity Structure ────────────────────────────────────────────────
+const DELAWARE_STRUCTURE = {
+  label: "FC Group Holding Ltd.",
+  sub: "UK Ultimate Holdco · Co. No. 14797242",
+  color: "hsl(0 0% 50%)",
+  note: "UK (reference only)",
+  children: [
+    {
+      label: "Founders Capital US Holdings LLC",
+      sub: "FC-US-HOLDING · Delaware",
+      color: "hsl(213 94% 62%)",
+      children: [
+        {
+          label: "Founders Capital Platform GP, LP",
+          sub: "FC-PLATFORM-GP · Delaware GP",
+          color: "hsl(231 70% 60%)",
+          children: [],
+        },
+        {
+          label: "Founders Capital Platform LP",
+          sub: "FC-PLATFORM-LP · Master Series LLC",
+          color: "hsl(231 70% 60%)",
+          children: [
+            { label: "Vector I",  sub: "FC-VECTOR-I · Protected Series",  color: "hsl(142 70% 45%)", children: [] },
+            { label: "Vector II", sub: "FC-VECTOR-II · Protected Series", color: "hsl(142 70% 45%)", children: [] },
+            { label: "Vector III · Reach Power",  sub: "FC-VECTOR-III · EIN 36-5168991",  color: "hsl(142 70% 45%)", children: [] },
+            { label: "Vector IV · Project Prometheus", sub: "FC-VECTOR-IV · EIN 61-2311112", color: "hsl(142 70% 45%)", children: [] },
+            { label: "Vector V",  sub: "FC-VECTOR-V · Protected Series",  color: "hsl(142 70% 45%)", children: [] },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+interface OrgNode {
+  label: string;
+  sub: string;
+  color: string;
+  note?: string;
+  children: OrgNode[];
+}
+
+function OrgTreeNode({ node, depth = 0 }: { node: OrgNode; depth?: number }) {
+  const [open, setOpen] = useState(true);
+  const hasChildren = node.children.length > 0;
+  return (
+    <div style={{ marginLeft: depth > 0 ? 20 : 0 }}>
+      {depth > 0 && (
+        <div
+          className="absolute"
+          style={{
+            left: -12, top: 14,
+            width: 12, height: 1,
+            background: "hsl(var(--border))",
+          }}
+        />
+      )}
+      <div className="relative flex items-start gap-2 mb-2">
+        {hasChildren && (
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="mt-1 flex-shrink-0 p-0.5 rounded hover:opacity-70 transition-opacity"
+            style={{ color: node.color }}
+          >
+            <ChevronRight size={12} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+          </button>
+        )}
+        {!hasChildren && <div className="w-5 flex-shrink-0" />}
+        <div
+          className="flex-1 rounded-lg px-3 py-2 border text-sm"
+          style={{
+            borderColor: node.color + "55",
+            background: node.color + "0D",
+          }}
+        >
+          <div className="font-medium text-sm" style={{ color: "hsl(var(--foreground))" }}>
+            {node.label}
+            {node.note && (
+              <span className="ml-2 text-xs font-normal px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+                {node.note}
+              </span>
+            )}
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{node.sub}</div>
+        </div>
+      </div>
+      {hasChildren && open && (
+        <div className="relative pl-5 border-l" style={{ borderColor: "hsl(var(--border))" }}>
+          {node.children.map((child, i) => (
+            <OrgTreeNode key={i} node={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
+  const [structureOpen, setStructureOpen] = useState(false);
+
   const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ["/api/dashboard"],
     queryFn: () => apiRequest("GET", "/api/dashboard").then(r => r.json()),
@@ -72,14 +174,62 @@ export default function Dashboard() {
 
   return (
     <div className="p-8 max-w-6xl">
+      {/* Entity Structure Sheet */}
+      <Sheet open={structureOpen} onOpenChange={setStructureOpen}>
+        <SheetContent side="right" className="w-[480px] sm:max-w-[480px] overflow-y-auto">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <Network size={16} style={{ color: "hsl(213 94% 62%)" }} />
+              Delaware Entity Structure
+            </SheetTitle>
+            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+              Founders Capital Platform LLC · Series LLC structure
+            </p>
+          </SheetHeader>
+          <OrgTreeNode node={DELAWARE_STRUCTURE} />
+          <div
+            className="mt-6 rounded-lg p-4 text-xs space-y-1"
+            style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}
+          >
+            <div className="font-medium mb-2" style={{ color: "hsl(var(--foreground))" }}>Notes</div>
+            <div>· UK entities are shown for structural context only — no portal reporting</div>
+            <div>· Protected Series SPVs are segregated cells of FC Platform LP</div>
+            <div>· AIFM delegation: Paxiot Limited (FCA-Authorised, Co. No. 07455644)</div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-xl font-semibold" style={{ color: "hsl(var(--foreground))" }}>
-          Platform Overview
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-          Founders Capital Platform LLC · Delaware Series LLC
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+              Platform Overview
+            </h1>
+            <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+              Founders Capital Platform LLC · Delaware Series LLC
+            </p>
+          </div>
+          <button
+            data-testid="button-entity-structure"
+            onClick={() => setStructureOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border"
+            style={{
+              background: "hsl(231 70% 54% / 0.10)",
+              borderColor: "hsl(231 70% 54% / 0.30)",
+              color: "hsl(231 70% 72%)",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.background = "hsl(231 70% 54% / 0.18)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = "hsl(231 70% 54% / 0.10)";
+            }}
+          >
+            <Network size={14} />
+            Entity Structure
+          </button>
+        </div>
       </div>
 
       {/* Stats grid */}

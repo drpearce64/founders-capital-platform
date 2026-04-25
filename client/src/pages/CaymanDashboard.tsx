@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   DollarSign, TrendingUp, Users, Phone, Building2,
-  Globe, BarChart3, AlertCircle, CheckCircle2,
+  Globe, BarChart3, AlertCircle, CheckCircle2, Network, ChevronRight,
 } from "lucide-react";
 
 const CAYMAN_FUND_ID = "14d76562-2219-4121-b0bd-5379018ac3b4";
@@ -49,7 +51,94 @@ function KPICard({
   );
 }
 
+// ── Cayman Entity Structure ────────────────────────────────────────────────
+const CAYMAN_STRUCTURE = {
+  label: "FC Group Holding Ltd.",
+  sub: "UK Ultimate Holdco · Co. No. 14797242",
+  color: "hsl(0 0% 50%)",
+  note: "UK (reference only)",
+  children: [
+    {
+      label: "Paxiot Limited",
+      sub: "FCA-Authorised AIFM · Co. No. 07455644",
+      color: "hsl(0 0% 50%)",
+      note: "UK AIFM",
+      children: [
+        {
+          label: "FC Strat. Opps. Fund I GP Limited",
+          sub: "FC-CAYMAN-GP · Cayman Exempted Co. · Dir: Richard Hadler",
+          color: "hsl(48 90% 50%)",
+          note: "Cayman GP",
+          children: [
+            {
+              label: "Founders Capital Strat. Opps. Fund I LP",
+              sub: "FC-CAYMAN-FUND · Reg. No. 134092 · CIMA Registered",
+              color: "hsl(196 80% 46%)",
+              note: "Cayman Fund",
+              children: [],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+interface OrgNode {
+  label: string;
+  sub: string;
+  color: string;
+  note?: string;
+  children: OrgNode[];
+}
+
+function OrgTreeNode({ node, depth = 0 }: { node: OrgNode; depth?: number }) {
+  const [open, setOpen] = useState(true);
+  const hasChildren = node.children.length > 0;
+  return (
+    <div style={{ marginLeft: depth > 0 ? 20 : 0 }}>
+      <div className="relative flex items-start gap-2 mb-2">
+        {hasChildren && (
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="mt-1 flex-shrink-0 p-0.5 rounded hover:opacity-70 transition-opacity"
+            style={{ color: node.color }}
+          >
+            <ChevronRight size={12} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+          </button>
+        )}
+        {!hasChildren && <div className="w-5 flex-shrink-0" />}
+        <div
+          className="flex-1 rounded-lg px-3 py-2 border text-sm"
+          style={{
+            borderColor: node.color + "55",
+            background: node.color + "0D",
+          }}
+        >
+          <div className="font-medium text-sm" style={{ color: "hsl(var(--foreground))" }}>
+            {node.label}
+            {node.note && (
+              <span className="ml-2 text-xs font-normal px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+                {node.note}
+              </span>
+            )}
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{node.sub}</div>
+        </div>
+      </div>
+      {hasChildren && open && (
+        <div className="relative pl-5 border-l" style={{ borderColor: "hsl(var(--border))" }}>
+          {node.children.map((child, i) => (
+            <OrgTreeNode key={i} node={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CaymanDashboard() {
+  const [structureOpen, setStructureOpen] = useState(false);
   // ── Data fetches ──────────────────────────────────────────────────────────
   const { data: commitments = [], isLoading: loadingCommitments } = useQuery({
     queryKey: ["/api/commitments", CAYMAN_FUND_ID],
@@ -116,19 +205,65 @@ export default function CaymanDashboard() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
+      {/* Entity Structure Sheet */}
+      <Sheet open={structureOpen} onOpenChange={setStructureOpen}>
+        <SheetContent side="right" className="w-[480px] sm:max-w-[480px] overflow-y-auto">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <Network size={16} style={{ color: "hsl(196 80% 46%)" }} />
+              Cayman Entity Structure
+            </SheetTitle>
+            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+              Founders Capital Strat. Opps. Fund I LP · Cayman Islands
+            </p>
+          </SheetHeader>
+          <OrgTreeNode node={CAYMAN_STRUCTURE} />
+          <div
+            className="mt-6 rounded-lg p-4 text-xs space-y-1"
+            style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}
+          >
+            <div className="font-medium mb-2" style={{ color: "hsl(var(--foreground))" }}>Notes</div>
+            <div>· Registered with CIMA (Cayman Islands Monetary Authority)</div>
+            <div>· Paxiot Limited acts as AIFM under delegation from the GP</div>
+            <div>· Fund incorporated 10 Oct 2025 · GP incorporated 9 Oct 2025</div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-2xl">🇰🇾</span>
-          <h1 className="text-xl font-semibold" style={{ color: "hsl(var(--foreground))" }}>
-            Cayman Islands Dashboard
-          </h1>
-          <Badge variant="outline" className="text-xs">Exempted LP</Badge>
-          {latestNAV && (
-            <span className="text-xs ml-auto" style={{ color: "hsl(var(--muted-foreground))" }}>
-              NAV mark: {latestNAV.mark_date}
-            </span>
-          )}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🇰🇾</span>
+            <h1 className="text-xl font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+              Cayman Islands Dashboard
+            </h1>
+            <Badge variant="outline" className="text-xs">Exempted LP</Badge>
+            {latestNAV && (
+              <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                NAV mark: {latestNAV.mark_date}
+              </span>
+            )}
+          </div>
+          <button
+            data-testid="button-cayman-entity-structure"
+            onClick={() => setStructureOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border"
+            style={{
+              background: "hsl(196 80% 46% / 0.10)",
+              borderColor: "hsl(196 80% 46% / 0.30)",
+              color: "hsl(196 80% 60%)",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.background = "hsl(196 80% 46% / 0.18)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = "hsl(196 80% 46% / 0.10)";
+            }}
+          >
+            <Network size={14} />
+            Entity Structure
+          </button>
         </div>
         <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
           Founders Capital Strat. Opps. Fund I LP — Reg. No. 134092 · CIMA Registered
