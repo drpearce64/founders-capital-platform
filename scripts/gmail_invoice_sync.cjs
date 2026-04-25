@@ -130,9 +130,31 @@ function detectSeries(text) {
 }
 
 function extractAmount(subject) {
-  const m = subject.match(/[\$£€][\s]?([\d,]+(?:\.\d{2})?)/);
-  if (m) return parseFloat(m[1].replace(/,/g, ""));
+  const m = subject.match(/([\$£€])[\s]?([\d,]+(?:\.\d{2})?)/);
+  if (m) return parseFloat(m[2].replace(/,/g, ""));
   return 0;
+}
+
+// Detect currency from symbol in subject line
+function extractCurrency(subject) {
+  if (subject.includes("£")) return "GBP";
+  if (subject.includes("€")) return "EUR";
+  return "USD";
+}
+
+// Fetch live FX rate from open.er-api.com (free, no key needed)
+// Returns rate for 1 unit of `from` in USD. Falls back to 1.0 on error.
+async function fetchFxRate(from) {
+  if (from === "USD") return 1.0;
+  try {
+    const r = await httpRequest(`https://open.er-api.com/v6/latest/${from}`);
+    if (r.body && r.body.rates && r.body.rates.USD) {
+      return parseFloat(r.body.rates.USD.toFixed(6));
+    }
+  } catch (e) {
+    console.warn(`[InvoiceSync] FX lookup failed for ${from}:`, e.message);
+  }
+  return 1.0;
 }
 
 function extractVendor(from) {
@@ -206,6 +228,8 @@ async function main() {
 
       const vendor      = extractVendor(from);
       const amount      = extractAmount(subject);
+      const currency    = extractCurrency(subject);
+      const fxRate      = await fetchFxRate(currency);
       const seriesTag   = detectSeries(subject + " " + from);
       const entityId    = await getEntityIdForSeries(seriesTag);
       const invoiceDate = new Date(date).toISOString().slice(0, 10);
@@ -217,13 +241,15 @@ async function main() {
         description: subject,
         invoice_date: invoiceDate,
         amount: amount || 0,
-        currency: "USD",
+        currency,
+        fx_rate_to_usd: fxRate,
+        // amount_usd is a GENERATED column — computed by Supabase automatically
         entity_id: entityId,
         series_tag: seriesTag,
         status: "unpaid",
         gmail_subject: subject,
         has_attachment: (full.payload?.parts || []).some(p => p.filename),
-        notes: `Auto-imported from Gmail on ${new Date().toISOString().slice(0, 10)}.`,
+        notes: `Auto-imported from Gmail on ${new Date().toISOString().slice(0, 10)}.${currency !== "USD" ? ` FX: 1 ${currency} = ${fxRate} USD.` : ""}`,
       });
 
       console.log(`[InvoiceSync] ✓ ${vendor} — ${subject.slice(0, 60)}`);
