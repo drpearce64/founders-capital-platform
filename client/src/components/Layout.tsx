@@ -168,18 +168,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   }}
                 >
                   {key === "yc" ? (
-                    /* YC text mark instead of flag emoji */
-                    <span
-                      className="font-black leading-none tracking-tighter"
-                      style={{ fontSize: "13px", color: active ? "hsl(231 70% 76%)" : "hsl(0 0% 50%)" }}
-                    >
-                      YC
-                    </span>
+                    /* US flag + YC label */
+                    <span className="text-base leading-none">🇺🇸</span>
                   ) : (
                     <span className="text-base leading-none">{info.flag}</span>
                   )}
                   <span className="leading-tight truncate w-full text-center" style={{ fontSize: "10px" }}>
-                    {key === "delaware" ? "Delaware" : key === "cayman" ? "Cayman" : "Portfolio"}
+                    {key === "delaware" ? "Delaware" : key === "cayman" ? "Cayman" : "YC"}
                   </span>
                 </button>
               );
