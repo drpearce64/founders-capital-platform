@@ -51,6 +51,8 @@ interface Invoice {
   due_date?: string;
   amount: number;
   currency: string;
+  fx_rate_to_usd: number;
+  amount_usd: number;
   series_tag?: string;
   status: "unpaid" | "paid" | "overdue" | "void" | "draft";
   paid_date?: string;
@@ -158,6 +160,7 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
     due_date: "",
     amount: "",
     currency: "USD",
+    fx_rate_to_usd: "1.0",
     series_tag: "PLATFORM",
     notes: "",
   });
@@ -168,6 +171,7 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
       apiRequest("POST", "/api/invoices", {
         ...form,
         amount: parseFloat(form.amount) || 0,
+        fx_rate_to_usd: parseFloat(form.fx_rate_to_usd) || 1.0,
         status: "unpaid",
       }),
     onSuccess: () => {
@@ -180,6 +184,10 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
   });
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleCurrencyChange = (v: string) => {
+    setForm(f => ({ ...f, currency: v, fx_rate_to_usd: v === "USD" ? "1.0" : f.fx_rate_to_usd === "1.0" ? "" : f.fx_rate_to_usd }));
+  };
 
   return (
     <div className="space-y-4 pt-2">
@@ -210,7 +218,7 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="space-y-2">
           <Label>Currency</Label>
-          <Select value={form.currency} onValueChange={v => set("currency", v)}>
+          <Select value={form.currency} onValueChange={handleCurrencyChange}>
             <SelectTrigger data-testid="select-currency"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="USD">USD</SelectItem>
@@ -219,6 +227,24 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
             </SelectContent>
           </Select>
         </div>
+        {form.currency !== "USD" && (
+          <div className="space-y-2 col-span-2">
+            <Label>FX Rate to USD <span className="text-muted-foreground text-xs">(1 {form.currency} = ? USD)</span></Label>
+            <Input
+              type="number"
+              step="0.0001"
+              placeholder="e.g. 1.27"
+              value={form.fx_rate_to_usd}
+              onChange={e => set("fx_rate_to_usd", e.target.value)}
+              data-testid="input-fx-rate"
+            />
+            {form.amount && form.fx_rate_to_usd && parseFloat(form.fx_rate_to_usd) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                USD equivalent: {fmt(parseFloat(form.amount) * parseFloat(form.fx_rate_to_usd))}
+              </p>
+            )}
+          </div>
+        )}
         <div className="space-y-2">
           <Label>Series / Entity</Label>
           <Select value={form.series_tag} onValueChange={v => set("series_tag", v)}>
@@ -267,10 +293,10 @@ export default function AccountsPayable() {
     queryKey: ["/api/ap/summary"],
   });
 
-  // KPI totals
-  const totalUnpaid   = invoices.filter(i => i.status === "unpaid").reduce((s, i) => s + i.amount, 0);
-  const totalOverdue  = invoices.filter(i => i.status === "overdue").reduce((s, i) => s + i.amount, 0);
-  const totalPaid     = invoices.filter(i => i.status === "paid").reduce((s, i) => s + i.amount, 0);
+  // KPI totals — use amount_usd so mixed-currency totals are always in USD
+  const totalUnpaid   = invoices.filter(i => i.status === "unpaid").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
+  const totalOverdue  = invoices.filter(i => i.status === "overdue").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
+  const totalPaid     = invoices.filter(i => i.status === "paid").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
   const countUnpaid   = invoices.filter(i => i.status === "unpaid").length;
   const countOverdue  = invoices.filter(i => i.status === "overdue").length;
 
@@ -472,7 +498,8 @@ export default function AccountsPayable() {
                   <TableHead>Vendor</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Series</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Source</TableHead>
+                  <TableHead className="text-right">USD</TableHead>
                   <TableHead>Invoice Date</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Status</TableHead>
@@ -489,8 +516,18 @@ export default function AccountsPayable() {
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {seriesLabel(inv.series_tag)}
                     </TableCell>
+                    <TableCell className="text-right text-sm">
+                      {inv.currency !== "USD" ? (
+                        <span className="text-muted-foreground">
+                          {fmt(inv.amount, inv.currency)}
+                          <span className="block text-xs opacity-60">@ {(inv.fx_rate_to_usd ?? 1).toFixed(4)}</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right text-sm font-medium">
-                      {fmt(inv.amount, inv.currency)}
+                      {fmt(inv.amount_usd ?? inv.amount)}
                     </TableCell>
                     <TableCell className="text-sm whitespace-nowrap">{fmtDate(inv.invoice_date)}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">
