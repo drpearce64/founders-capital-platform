@@ -63,13 +63,8 @@ async function copyScripts() {
   // Copy plain-JS scripts into dist/scripts/ so fork() can find them at runtime
   await mkdir("dist/scripts", { recursive: true });
   await copyFile("scripts/airtable_sync.js", "dist/scripts/airtable_sync.js");
-  // Copy the P&L Excel model so the download route can serve it in production
-  try {
-    await copyFile("reports/fc_pl_model.xlsx", "dist/scripts/fc_pl_model.xlsx");
-    console.log("P&L model copied to dist/scripts/");
-  } catch (e) {
-    console.warn("Warning: could not copy fc_pl_model.xlsx —", e);
-  }
+  // Copy the live P&L generator so the download route can call it in production
+  await copyFile("scripts/generate_pl_model.cjs", "dist/scripts/generate_pl_model.cjs");
   console.log("scripts copied to dist/scripts/");
 }
 

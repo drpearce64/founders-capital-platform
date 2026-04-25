@@ -1245,30 +1245,57 @@ Founders Capital`;
     res.json(data ?? { status: "no_sync_yet" });
   });
 
-  // ── P&L Model download ──────────────────────────────────────────────────────
+  // ── P&L Model download (generated live from Supabase on each request) ──────
   app.get("/api/reports/pl-model", async (_req, res) => {
-    const reportPath = path.join(process.cwd(), "dist", "scripts", "fc_pl_model.xlsx");
-    const devPath    = path.join(process.cwd(), "reports", "fc_pl_model.xlsx");
+    // Locate the generator script (dist/scripts in prod, scripts/ in dev)
+    const generatorProd = path.join(process.cwd(), "dist", "scripts", "generate_pl_model.cjs");
+    const generatorDev  = path.join(process.cwd(), "scripts", "generate_pl_model.cjs");
+    const generatorPath = fs.existsSync(generatorProd) ? generatorProd : generatorDev;
 
-    // Prefer dist copy (production), fall back to local dev copy
-    const filePath = fs.existsSync(reportPath) ? reportPath : devPath;
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        error: "P&L model not found. Run the model generator to create it.",
-      });
+    if (!fs.existsSync(generatorPath)) {
+      return res.status(500).json({ error: "P&L generator script not found on server." });
     }
 
-    const stat = fs.statSync(filePath);
-    res.setHeader("Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="FC_PL_Model.xlsx"'
-    );
-    res.setHeader("Content-Length", stat.size);
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
+    // Write to a unique temp file so concurrent requests don't collide
+    const tmpFile = path.join(os.tmpdir(), `fc_pl_model_${Date.now()}.xlsx`);
+
+    try {
+      // Run the generator (inherits SUPABASE_URL + SUPABASE_ANON_KEY from env)
+      await execFileAsync(process.execPath, [generatorPath, tmpFile], {
+        timeout: 30_000,
+        env: process.env,
+      });
+
+      if (!fs.existsSync(tmpFile)) {
+        return res.status(500).json({ error: "Generator ran but produced no output file." });
+      }
+
+      const stat = fs.statSync(tmpFile);
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="FC_PL_Model_${new Date().toISOString().slice(0,10)}.xlsx"`
+      );
+      res.setHeader("Content-Length", stat.size);
+
+      const stream = fs.createReadStream(tmpFile);
+      stream.on("end", () => {
+        // Clean up temp file after streaming
+        fs.unlink(tmpFile, () => {});
+      });
+      stream.pipe(res);
+    } catch (err: any) {
+      // Clean up if generator failed
+      fs.unlink(tmpFile, () => {});
+      console.error("[PLModel] Generator error:", err.message);
+      return res.status(500).json({
+        error: "Failed to generate P&L model.",
+        detail: err.message,
+      });
+    }
   });
 
   return httpServer;
