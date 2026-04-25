@@ -341,7 +341,7 @@ export default function GroupStructure() {
   const { toast } = useToast();
 
   const { data: entities = [], isLoading: loadingEntities } = useQuery<Entity[]>({
-    queryKey: ["/api/entities-full"],
+    queryKey: ["/api/entities"],
   });
 
   const { data: costs = [], isLoading: loadingCosts } = useQuery<EntityCost[]>({
