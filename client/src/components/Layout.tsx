@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield,
   Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw,
   PieChart, FileSpreadsheet, BookOpen, FileCheck, Network, Globe, Landmark,
-  ChevronRight,
+  ChevronRight, CalendarDays,
 } from "lucide-react";
 
 // ── Delaware nav ──────────────────────────────────────────────────────────────
@@ -23,8 +23,9 @@ const delawareNav = [
   { href: "/group-structure", label: "Group Structure",        icon: Network,         section: "group" },
   { href: "/statements",      label: "Statements",             icon: FileText,        section: "reporting" },
   { href: "/airtable-sync",   label: "Airtable Sync",          icon: RefreshCw,       section: "reporting" },
-  { href: "/pl-model",        label: "P&L Model",              icon: FileSpreadsheet, section: "reporting" },
-  { href: "/documents",       label: "Documents",              icon: FolderOpen,      section: "admin" },
+  { href: "/pl-model",           label: "P&L Model",            icon: FileSpreadsheet, section: "reporting" },
+  { href: "/reporting-calendar", label: "Reporting Calendar",   icon: CalendarDays,    section: "reporting" },
+  { href: "/documents",          label: "Documents",            icon: FolderOpen,      section: "admin" },
   { href: "/audit-log",       label: "Audit Log",              icon: Shield,          section: "admin" },
   { href: "/settings",        label: "Users & Roles",          icon: UserCog,         section: "admin" },
 ];
@@ -47,8 +48,9 @@ const caymanNav = [
   { href: "/cayman/nav",             label: "NAV / Fair Value", icon: BarChart3,      section: "finance" },
   { href: "/cayman/accounts-payable",label: "Accounts Payable", icon: FileCheck,      section: "finance" },
   { href: "/group-structure",         label: "Group Structure", icon: Network,         section: "group" },
-  { href: "/statements",             label: "Statements",      icon: FileText,        section: "reporting" },
-  { href: "/documents",              label: "Documents",       icon: FolderOpen,      section: "admin" },
+  { href: "/statements",             label: "Statements",         icon: FileText,     section: "reporting" },
+  { href: "/reporting-calendar",     label: "Reporting Calendar",  icon: CalendarDays, section: "reporting" },
+  { href: "/documents",              label: "Documents",           icon: FolderOpen,   section: "admin" },
   { href: "/audit-log",              label: "Audit Log",       icon: Shield,          section: "admin" },
 ];
 
