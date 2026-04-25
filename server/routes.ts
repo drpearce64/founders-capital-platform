@@ -1245,5 +1245,31 @@ Founders Capital`;
     res.json(data ?? { status: "no_sync_yet" });
   });
 
+  // ── P&L Model download ──────────────────────────────────────────────────────
+  app.get("/api/reports/pl-model", async (_req, res) => {
+    const reportPath = path.join(process.cwd(), "dist", "scripts", "fc_pl_model.xlsx");
+    const devPath    = path.join(process.cwd(), "reports", "fc_pl_model.xlsx");
+
+    // Prefer dist copy (production), fall back to local dev copy
+    const filePath = fs.existsSync(reportPath) ? reportPath : devPath;
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        error: "P&L model not found. Run the model generator to create it.",
+      });
+    }
+
+    const stat = fs.statSync(filePath);
+    res.setHeader("Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="FC_PL_Model.xlsx"'
+    );
+    res.setHeader("Content-Length", stat.size);
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
+  });
+
   return httpServer;
 }

@@ -18,6 +18,7 @@ import Documents from "./pages/Documents";
 import Settings from "./pages/Settings";
 import QuarterlyStatements from "./pages/QuarterlyStatements";
 import AirtableSync from "./pages/AirtableSync";
+import PLModel from "./pages/PLModel";
 import NotFound from "./pages/not-found";
 
 export default function App() {
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/settings" component={Settings} />
             <Route path="/statements" component={QuarterlyStatements} />
             <Route path="/airtable-sync" component={AirtableSync} />
+            <Route path="/pl-model" component={PLModel} />
             <Route component={NotFound} />
           </Switch>
         </Layout>
