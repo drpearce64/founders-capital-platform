@@ -1768,9 +1768,9 @@ Founders Capital`;
       const { data: delawareInvestors, error: delErr } = await supabase
         .from("investors")
         .select(`
-          id, full_name, email, country, kyc_status,
+          id, full_name, email, country_of_residence, kyc_status,
           investor_commitments (
-            series_name, entity_id, commitment_usd, called_usd, status,
+            id, entity_id, committed_amount, called_amount, status,
             entities ( name, short_code )
           )
         `)
@@ -1784,16 +1784,16 @@ Founders Capital`;
         id: inv.id,
         name: inv.full_name,
         email: inv.email,
-        location: inv.country,
+        location: inv.country_of_residence,
         kyc_status: inv.kyc_status,
         total_investments_usd: (inv.investor_commitments ?? []).reduce(
-          (sum: number, c: any) => sum + (Number(c.commitment_usd) || 0), 0
+          (sum: number, c: any) => sum + (Number(c.committed_amount) || 0), 0
         ),
         num_investments: (inv.investor_commitments ?? []).length,
         value_of_portfolio: 0,
         vehicles: ["Delaware"],
         holdings: (inv.investor_commitments ?? []).map((c: any) => ({
-          deal_name: c.entities?.name ?? c.series_name,
+          deal_name: c.entities?.name ?? "Unknown SPV",
           vehicle: "Delaware",
           yc_batch: null,
           closing_date: null,
