@@ -28,25 +28,33 @@ export default function CaymanNAV() {
     notes: "",
   });
 
-  // Fetch from nav_marks filtered for Cayman
+  const CAYMAN_FUND_ID = "14d76562-2219-4121-b0bd-5379018ac3b4";
+
+  // Use investments table for portfolio positions
   const { data: positions = [], isLoading } = useQuery({
-    queryKey: ["/api/nav-marks", "cayman"],
+    queryKey: ["/api/investments", CAYMAN_FUND_ID],
     queryFn: () =>
-      apiRequest("GET", "/api/nav-marks").then(r => r.json()).then((all: any[]) =>
-        all.filter(p => p.fund === "cayman" || p.entity_id === "FC-CAYMAN-FUND")
-      ),
+      apiRequest("GET", `/api/investments?entity_id=${CAYMAN_FUND_ID}`).then(r => r.json()),
   });
 
   const createMutation = useMutation({
     mutationFn: (data: any) =>
-      apiRequest("POST", "/api/nav-marks", {
-        ...data,
-        entity_id: "FC-CAYMAN-FUND",
-        fund: "cayman",
-        currency: "USD",
+      apiRequest("POST", "/api/investments", {
+        entity_id: CAYMAN_FUND_ID,
+        company_name: data.company,
+        sector: data.sector,
+        stage: data.stage,
+        instrument_type: "preferred_shares",
+        investment_date: data.valuation_date,
+        cost_basis: parseFloat(data.cost_usd),
+        current_fair_value: parseFloat(data.fair_value_usd),
+        fair_value_date: data.valuation_date,
+        valuation_basis: "Manual entry",
+        notes: data.notes,
+        status: "active",
       }).then(r => r.json()),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/nav-marks", "cayman"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/investments", CAYMAN_FUND_ID] });
       setOpen(false);
       setForm({ company: "", sector: "", stage: "early", cost_usd: "", fair_value_usd: "", valuation_date: new Date().toISOString().slice(0, 10), notes: "" });
       toast({ title: "Position added" });
@@ -54,8 +62,8 @@ export default function CaymanNAV() {
     onError: () => toast({ title: "Error", description: "Failed to add position.", variant: "destructive" }),
   });
 
-  const totalCost  = positions.reduce((s: number, p: any) => s + (parseFloat(p.cost_usd) || 0), 0);
-  const totalFV    = positions.reduce((s: number, p: any) => s + (parseFloat(p.fair_value_usd) || 0), 0);
+  const totalCost  = positions.reduce((s: number, p: any) => s + (parseFloat(p.cost_basis) || 0), 0);
+  const totalFV    = positions.reduce((s: number, p: any) => s + (parseFloat(p.current_fair_value) || 0), 0);
   const moic       = totalCost > 0 ? (totalFV / totalCost).toFixed(2) : "—";
 
   return (
@@ -132,12 +140,12 @@ export default function CaymanNAV() {
               </TableHeader>
               <TableBody>
                 {positions.map((p: any) => {
-                  const cost = parseFloat(p.cost_usd) || 0;
-                  const fv   = parseFloat(p.fair_value_usd) || 0;
+                  const cost = parseFloat(p.cost_basis) || 0;
+                  const fv   = parseFloat(p.current_fair_value) || 0;
                   const m    = cost > 0 ? (fv / cost).toFixed(2) + "x" : "—";
                   return (
                     <TableRow key={p.id}>
-                      <TableCell className="font-medium text-sm">{p.company}</TableCell>
+                      <TableCell className="font-medium text-sm">{p.company_name}</TableCell>
                       <TableCell className="text-sm">{p.sector}</TableCell>
                       <TableCell>
                         <Badge
@@ -158,7 +166,7 @@ export default function CaymanNAV() {
                       >
                         {m}
                       </TableCell>
-                      <TableCell className="text-sm">{p.valuation_date}</TableCell>
+                      <TableCell className="text-sm">{p.fair_value_date ?? p.investment_date}</TableCell>
                     </TableRow>
                   );
                 })}

@@ -20,30 +20,45 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const CAYMAN_ENTITIES = [
-  { value: "FC-CAYMAN-GP",   label: "FC Strat. Opps. Fund I GP Limited" },
-  { value: "FC-CAYMAN-FUND", label: "Founders Capital Strat. Opps. Fund I LP" },
+  { value: "14d76562-2219-4121-b0bd-5379018ac3b4", label: "Founders Capital Strat. Opps. Fund I LP" },
+  { value: "3540df09-f8bb-43ca-a4de-b89945b6b16b", label: "FC Strat. Opps. Fund I GP Limited" },
 ];
 
 export default function CaymanAccountsPayable() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    entity_id: "FC-CAYMAN-FUND", vendor: "", description: "", invoice_date: new Date().toISOString().slice(0, 10),
+    entity_id: "14d76562-2219-4121-b0bd-5379018ac3b4", vendor: "", description: "", invoice_date: new Date().toISOString().slice(0, 10),
     due_date: "", amount: "", currency: "USD", fx_rate_to_usd: "1", status: "accrued",
   });
 
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ["/api/invoices", "cayman"],
-    queryFn: () =>
-      apiRequest("GET", "/api/invoices").then(r => r.json()).then((all: any[]) =>
-        all.filter(i => i.entity_id === "FC-CAYMAN-GP" || i.entity_id === "FC-CAYMAN-FUND")
-      ),
+  const CAYMAN_ENTITY_IDS = ["14d76562-2219-4121-b0bd-5379018ac3b4", "3540df09-f8bb-43ca-a4de-b89945b6b16b"];
+
+  const { data: rawCosts = [], isLoading } = useQuery({
+    queryKey: ["/api/entity-costs", "cayman"],
+    queryFn: async () => {
+      const [a, b] = await Promise.all([
+        apiRequest("GET", `/api/entity-costs?entity_id=${CAYMAN_ENTITY_IDS[0]}`).then(r => r.json()),
+        apiRequest("GET", `/api/entity-costs?entity_id=${CAYMAN_ENTITY_IDS[1]}`).then(r => r.json()),
+      ]);
+      return [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])];
+    },
   });
+  const invoices = rawCosts;
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/invoices", data).then(r => r.json()),
+    mutationFn: (data: any) => apiRequest("POST", "/api/entity-costs", {
+      entity_id: data.entity_id,
+      cost_date: data.invoice_date,
+      description: `${data.vendor} — ${data.description}`,
+      category: "other",
+      amount: parseFloat(data.amount),
+      currency: data.currency,
+      fx_rate_to_usd: parseFloat(data.fx_rate_to_usd),
+      status: data.status,
+    }).then(r => r.json()),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices", "cayman"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-costs", "cayman"] });
       setOpen(false);
       setForm({ entity_id: "FC-CAYMAN-FUND", vendor: "", description: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "", amount: "", currency: "USD", fx_rate_to_usd: "1", status: "accrued" });
       toast({ title: "Invoice added" });
@@ -52,12 +67,12 @@ export default function CaymanAccountsPayable() {
   });
 
   const patchMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      apiRequest("PATCH", `/api/invoices/${id}`, { status }).then(r => r.json()),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/invoices", "cayman"] }),
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/entity-costs/${id}`, { status }).then(r => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/entity-costs", "cayman"] }),
   });
 
-  const totalUSD   = invoices.filter((i: any) => i.status !== "void").reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
+  const totalUSD    = invoices.filter((i: any) => i.status !== "void").reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
   const outstanding = invoices.filter((i: any) => i.status === "accrued").reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
 
   const isNonUSD = form.currency !== "USD";
@@ -125,12 +140,16 @@ export default function CaymanAccountsPayable() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invoices.map((inv: any) => (
+                {invoices.map((inv: any) => {
+                  const entityLabel = CAYMAN_ENTITIES.find(e => e.value === inv.entity_id)?.label
+                    ?.replace("Founders Capital Strat. Opps. Fund I LP", "Cayman Fund LP")
+                    ?.replace("FC Strat. Opps. Fund I GP Limited", "GP Ltd") ?? inv.entity_id;
+                  return (
                   <TableRow key={inv.id}>
-                    <TableCell className="text-xs font-mono">{inv.entity_id}</TableCell>
-                    <TableCell className="text-sm font-medium">{inv.vendor}</TableCell>
-                    <TableCell className="text-sm">{inv.description}</TableCell>
-                    <TableCell className="text-sm">{inv.invoice_date}</TableCell>
+                    <TableCell className="text-xs">{entityLabel}</TableCell>
+                    <TableCell className="text-sm font-medium">{inv.description}</TableCell>
+                    <TableCell className="text-sm">{inv.category}</TableCell>
+                    <TableCell className="text-sm">{inv.cost_date}</TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {inv.currency !== "USD" ? (
                         <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -163,7 +182,9 @@ export default function CaymanAccountsPayable() {
                       </Select>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
+                
               </TableBody>
             </Table>
           )}

@@ -14,10 +14,11 @@ import { Plus, Phone, DollarSign, CheckCircle, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_COLORS: Record<string, string> = {
-  draft:     "#868E96",
-  issued:    "#F59F00",
-  settled:   "#0CA678",
-  cancelled: "#FA5252",
+  draft:          "#868E96",
+  issued:         "#F59F00",
+  partially_funded: "#3B5BDB",
+  fully_funded:   "#0CA678",
+  cancelled:      "#FA5252",
 };
 
 export default function CaymanCapitalCalls() {
@@ -28,19 +29,30 @@ export default function CaymanCapitalCalls() {
     due_date: "", amount_usd: "", purpose: "", status: "draft", notes: "",
   });
 
+  const CAYMAN_FUND_ID = "14d76562-2219-4121-b0bd-5379018ac3b4";
+
   const { data: calls = [], isLoading } = useQuery({
-    queryKey: ["/api/capital-calls", "cayman"],
+    queryKey: ["/api/capital-calls", CAYMAN_FUND_ID],
     queryFn: () =>
-      apiRequest("GET", "/api/capital-calls").then(r => r.json()).then((all: any[]) =>
-        all.filter(c => c.fund === "cayman" || c.entity_id === "FC-CAYMAN-FUND")
-      ),
+      apiRequest("GET", `/api/capital-calls?entity_id=${CAYMAN_FUND_ID}`).then(r => r.json()),
   });
 
   const createMutation = useMutation({
     mutationFn: (data: any) =>
-      apiRequest("POST", "/api/capital-calls", { ...data, entity_id: "FC-CAYMAN-FUND", fund: "cayman" }).then(r => r.json()),
+      apiRequest("POST", "/api/capital-calls", {
+        entity_id: CAYMAN_FUND_ID,
+        call_number: parseInt(data.call_number) || calls.length + 1,
+        call_date: data.call_date,
+        due_date: data.due_date,
+        purpose: data.purpose,
+        total_call_amount: parseFloat(data.amount_usd),
+        currency: "USD",
+        status: data.status,
+        bank_name: "HSBC Grand Cayman",
+        reference_note: data.notes,
+      }).then(r => r.json()),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/capital-calls", "cayman"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/capital-calls", CAYMAN_FUND_ID] });
       setOpen(false);
       setForm({ call_number: "", call_date: new Date().toISOString().slice(0, 10), due_date: "", amount_usd: "", purpose: "", status: "draft", notes: "" });
       toast({ title: "Capital call created" });
@@ -48,8 +60,8 @@ export default function CaymanCapitalCalls() {
     onError: () => toast({ title: "Error", description: "Failed to create capital call.", variant: "destructive" }),
   });
 
-  const totalIssued   = calls.filter((c: any) => c.status !== "cancelled").reduce((s: number, c: any) => s + (parseFloat(c.amount_usd) || 0), 0);
-  const totalSettled  = calls.filter((c: any) => c.status === "settled").reduce((s: number, c: any) => s + (parseFloat(c.amount_usd) || 0), 0);
+  const totalIssued  = calls.filter((c: any) => c.status !== "cancelled").reduce((s: number, c: any) => s + (parseFloat(c.total_call_amount) || 0), 0);
+  const totalSettled = calls.filter((c: any) => c.status === "fully_funded").reduce((s: number, c: any) => s + (parseFloat(c.total_call_amount) || 0), 0);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -115,12 +127,12 @@ export default function CaymanCapitalCalls() {
               <TableBody>
                 {calls.map((c: any) => (
                   <TableRow key={c.id}>
-                    <TableCell className="font-mono text-sm">{c.call_number}</TableCell>
+                    <TableCell className="font-mono text-sm">CC-{String(c.call_number).padStart(3, "0")}</TableCell>
                     <TableCell className="text-sm">{c.call_date}</TableCell>
                     <TableCell className="text-sm">{c.due_date || "—"}</TableCell>
                     <TableCell className="text-sm">{c.purpose}</TableCell>
                     <TableCell className="text-right font-mono text-sm">
-                      ${parseFloat(c.amount_usd || 0).toLocaleString()}
+                      ${parseFloat(c.total_call_amount || 0).toLocaleString()}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -161,7 +173,8 @@ export default function CaymanCapitalCalls() {
                   <SelectContent>
                     <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="issued">Issued</SelectItem>
-                    <SelectItem value="settled">Settled</SelectItem>
+                    <SelectItem value="partially_funded">Partially Funded</SelectItem>
+              <SelectItem value="fully_funded">Fully Funded</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>

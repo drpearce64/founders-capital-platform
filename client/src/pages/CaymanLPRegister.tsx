@@ -31,18 +31,28 @@ export default function CaymanLPRegister() {
     status: "pending", notes: "",
   });
 
+  // Use investor_commitments filtered to the Cayman fund entity
+  const CAYMAN_FUND_ID = "14d76562-2219-4121-b0bd-5379018ac3b4";
+
   const { data: lps = [], isLoading } = useQuery({
-    queryKey: ["/api/lps", "cayman"],
+    queryKey: ["/api/commitments", CAYMAN_FUND_ID],
     queryFn: () =>
-      apiRequest("GET", "/api/lps").then(r => r.json()).then((all: any[]) =>
-        all.filter(lp => lp.fund === "cayman" || lp.notes?.toLowerCase().includes("cayman"))
-      ),
+      apiRequest("GET", `/api/commitments?entity_id=${CAYMAN_FUND_ID}`).then(r => r.json()),
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/lps", { ...data, fund: "cayman" }).then(r => r.json()),
+    mutationFn: (data: any) => apiRequest("POST", "/api/commitments", {
+      entity_id: CAYMAN_FUND_ID,
+      investor_id: data.investor_id,
+      committed_amount: parseFloat(data.commitment_usd),
+      subscription_date: data.subscription_date,
+      status: data.status,
+      notes: data.notes,
+      fee_rate: 0.02, carry_rate: 0.20, carried_interest_pct: 20.0,
+      management_fee_pct: 2.0, preferred_return_pct: 8.0,
+    }).then(r => r.json()),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/lps", "cayman"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commitments", CAYMAN_FUND_ID] });
       setOpen(false);
       setForm({ name: "", email: "", type: "individual", commitment_usd: "", subscription_date: new Date().toISOString().slice(0, 10), status: "pending", notes: "" });
       toast({ title: "LP added", description: "Cayman LP record created." });
@@ -50,7 +60,7 @@ export default function CaymanLPRegister() {
     onError: () => toast({ title: "Error", description: "Failed to add LP.", variant: "destructive" }),
   });
 
-  const totalCommitment = lps.reduce((s: number, lp: any) => s + (parseFloat(lp.commitment_usd) || 0), 0);
+  const totalCommitment = lps.reduce((s: number, lp: any) => s + (parseFloat(lp.committed_amount) || 0), 0);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -79,7 +89,7 @@ export default function CaymanLPRegister() {
         {[
           { label: "Total LPs", value: lps.length.toString(), icon: Users },
           { label: "Total Commitment", value: `$${totalCommitment.toLocaleString()}`, icon: null },
-          { label: "Active LPs", value: lps.filter((l: any) => l.status === "active").length.toString(), icon: null },
+          { label: "Active LPs", value: String(lps.filter((l: any) => l.status === "active").length), icon: null },
         ].map(kpi => (
           <Card key={kpi.label} className="border" style={{ borderColor: "hsl(var(--border))" }}>
             <CardContent className="pt-4 pb-3 px-5">
@@ -116,11 +126,11 @@ export default function CaymanLPRegister() {
               <TableBody>
                 {lps.map((lp: any) => (
                   <TableRow key={lp.id}>
-                    <TableCell className="font-medium text-sm">{lp.name}</TableCell>
-                    <TableCell className="text-sm">{lp.email}</TableCell>
-                    <TableCell className="text-sm capitalize">{lp.type}</TableCell>
+                    <TableCell className="font-medium text-sm">{lp.investors?.full_name ?? "—"}</TableCell>
+                    <TableCell className="text-sm">{lp.investors?.email ?? "—"}</TableCell>
+                    <TableCell className="text-sm capitalize">{lp.investors?.investor_type?.replace(/_/g, " ") ?? "—"}</TableCell>
                     <TableCell className="text-right text-sm font-mono">
-                      ${parseFloat(lp.commitment_usd || 0).toLocaleString()}
+                      ${parseFloat(lp.committed_amount || 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-sm">{lp.subscription_date}</TableCell>
                     <TableCell>
