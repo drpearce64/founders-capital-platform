@@ -1651,5 +1651,90 @@ Founders Capital`;
     res.json(data);
   });
 
+  // ── Entity Costs (Group Structure) ────────────────────────────────────────
+
+  // GET /api/entities-full — all entities including group hierarchy (no archived filter issues)
+  app.get("/api/entities-full", async (_req, res) => {
+    const { data, error } = await supabase
+      .from("entities")
+      .select("id, short_code, name, entity_type, jurisdiction, reporting_currency, parent_entity_id, archived_at")
+      .order("entity_type")
+      .order("name");
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // GET /api/entity-costs — list all entity costs, optional ?entity_id= filter
+  app.get("/api/entity-costs", async (req, res) => {
+    let query = supabase
+      .from("entity_costs")
+      .select("*, entities(short_code, name)")
+      .order("cost_date", { ascending: false });
+    if (req.query.entity_id) {
+      query = query.eq("entity_id", req.query.entity_id as string);
+    }
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // POST /api/entity-costs — create a cost entry
+  app.post("/api/entity-costs", async (req, res) => {
+    const allowed = [
+      "entity_id", "cost_date", "description", "category",
+      "amount", "currency", "fx_rate_to_usd",
+      "status", "paid_date", "payment_reference",
+      "is_recharged", "recharged_to_entity_id", "notes",
+    ];
+    const payload: Record<string, any> = {};
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) payload[k] = req.body[k];
+    }
+    // Default fx_rate_to_usd to 1.0 if USD and not provided
+    if (!payload.fx_rate_to_usd) payload.fx_rate_to_usd = 1.0;
+
+    const { data, error } = await supabase
+      .from("entity_costs")
+      .insert(payload)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    await audit("entity_costs", data.id, "create",
+      `Cost created: ${data.description} ${data.amount} ${data.currency}`);
+    res.json(data);
+  });
+
+  // PATCH /api/entity-costs/:id — mark paid / update status
+  app.patch("/api/entity-costs/:id", async (req, res) => {
+    const allowed = [
+      "status", "paid_date", "payment_reference", "notes",
+      "fx_rate_to_usd", "description", "category",
+    ];
+    const payload: Record<string, any> = {};
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) payload[k] = req.body[k];
+    }
+    const { data, error } = await supabase
+      .from("entity_costs")
+      .update(payload)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Cost entry not found" });
+    await audit("entity_costs", req.params.id, "update",
+      `Cost updated: ${data.description} → ${payload.status || data.status}`);
+    res.json(data);
+  });
+
+  // GET /api/entity-costs/summary — from entity_costs_summary view
+  app.get("/api/entity-costs/summary", async (_req, res) => {
+    const { data, error } = await supabase
+      .from("entity_costs_summary")
+      .select("*");
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
   return httpServer;
 }

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw, PieChart, FileSpreadsheet, BookOpen, FileCheck } from "lucide-react";
+import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw, PieChart, FileSpreadsheet, BookOpen, FileCheck, Network } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, section: "overview" },
@@ -13,6 +13,7 @@ const nav = [
   { href: "/nav-marks", label: "NAV / Fair Value", icon: BarChart3, section: "finance" },
   { href: "/tax-accounts", label: "Tax & Capital Accounts", icon: BookOpen, section: "finance" },
   { href: "/accounts-payable", label: "Accounts Payable", icon: FileCheck, section: "finance" },
+  { href: "/group-structure", label: "Group Structure", icon: Network, section: "finance" },
   { href: "/statements", label: "Statements", icon: FileText, section: "reporting" },
   { href: "/airtable-sync", label: "Airtable Sync", icon: RefreshCw, section: "reporting" },
   { href: "/pl-model", label: "P&L Model", icon: FileSpreadsheet, section: "reporting" },

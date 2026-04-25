@@ -215,7 +215,7 @@ async function main() {
   console.log("[PLGen] Fetching data from Supabase…");
 
   // Fetch all tables in parallel
-  const [entities, investments, commitments, capitalCalls, navMarks, expenses, capAcctBalances] =
+  const [entities, investments, commitments, capitalCalls, navMarks, expenses, capAcctBalances, entityCosts, allEntitiesFull] =
     await Promise.all([
       supabaseFetch("entities", "*", "archived_at=is.null&order=short_code"),
       supabaseFetch("investments", "*", "archived_at=is.null"),
@@ -224,6 +224,8 @@ async function main() {
       supabaseFetch("nav_marks", "*", "order=mark_date.desc"),
       supabaseFetch("series_expenses", "*"),
       supabaseFetch("lp_capital_account_balances", "*", "order=entity_name,investor_name,tax_year"),
+      supabaseFetch("entity_costs", "*", "order=cost_date.desc"),
+      supabaseFetch("entities", "id,short_code,name,entity_type,jurisdiction,reporting_currency,parent_entity_id", "order=short_code"),
     ]);
 
   console.log(`[PLGen] Fetched: ${entities.length} entities, ${investments.length} investments, ${commitments.length} commitments, ${capAcctBalances.length} capital account rows`);
@@ -1244,6 +1246,268 @@ async function main() {
 
     const ws = makeSheet(rows, [], COLS_AP);
     XLSX.utils.book_append_sheet(wb, ws, "Accounts Payable");
+  }
+
+  // ── SHEET 9: GROUP P&L ─────────────────────────────────────────────────────
+  {
+    const now = new Date().toLocaleString("en-GB", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }) + " UTC";
+
+    // Entity display order for Group P&L (US entities only, top-down hierarchy)
+    const US_ENTITY_ORDER = [
+      { short_code: "FC-LLC",         role: "Management Co — receives management fees" },
+      { short_code: "FC-US-HOLDING",  role: "US Intermediate Holdco" },
+      { short_code: "FC-PLATFORM-GP", role: "GP Entity — receives & distributes carry" },
+      { short_code: "FC-PLATFORM-LP", role: "Fund Vehicle" },
+      { short_code: "FC-PLATFORM",    role: "Master Delaware LLC" },
+      { short_code: "FC-VECTOR-I",    role: "Vector I Series — Shield AI" },
+      { short_code: "FC-VECTOR-III",  role: "Vector III Series — Reach Power" },
+      { short_code: "FC-VECTOR-IV",   role: "Vector IV Series — Project Prometheus" },
+    ];
+
+    const CATS = ["legal", "formation", "advisory", "platform", "staffing", "travel", "other"];
+
+    // Helpers for entity cost lookup
+    const entityById   = {};
+    for (const e of allEntitiesFull) entityById[e.id] = e;
+    const entityByCode = {};
+    for (const e of allEntitiesFull) entityByCode[e.short_code] = e;
+
+    // Group entity_costs by entity_id → by category
+    const costsByEntityId = {};
+    for (const c of (entityCosts || [])) {
+      if (!costsByEntityId[c.entity_id]) costsByEntityId[c.entity_id] = [];
+      costsByEntityId[c.entity_id].push(c);
+    }
+
+    // Management fee income (from commitments on FC-LLC)
+    const fcLlcEntity = entityByCode["FC-LLC"];
+    const mgmtFeeRate = 0.06;
+    const totalCommitted = commitments.reduce((s, c) => s + Number(c.committed_amount || 0), 0);
+    const mgmtFeeIncome = totalCommitted * mgmtFeeRate;
+
+    // Carry received (from capital_calls with call_type 'carry' at FC-PLATFORM-GP)
+    const fcGpEntity   = entityByCode["FC-PLATFORM-GP"];
+    const carryIncome  = (capitalCalls || []).filter(cc => cc.call_type === "carry")
+      .reduce((s, cc) => s + Number(cc.amount_called || 0), 0);
+
+    const COLS_PL = [3, 30, 18, 18, 18, 18, 18, 3];
+
+    const rows = [];
+
+    // ── Title block ──
+    rows.push(Array(8).fill(""));
+    rows.push(["",
+      cell("FOUNDERS CAPITAL PLATFORM", { fill: C.DARK_BROWN, font: font({ bold: true, color: C.WHITE, sz: 14 }), align: align("left") }),
+      ...Array(5).fill(cell("", { fill: C.DARK_BROWN })),
+      "",
+    ]);
+    rows.push(["",
+      cell("Group P&L — US Entity Structure", { fill: C.DARK_BROWN, font: font({ bold: true, color: C.GOLD, sz: 11 }), align: align("left") }),
+      ...Array(5).fill(cell("", { fill: C.DARK_BROWN })),
+      "",
+    ]);
+    rows.push(["",
+      cell(`Reported in USD  ·  Foreign currency transactions shown at source rate  ·  Generated: ${now}`,
+        { font: font({ italic: true, sz: 9, color: C.MID_GREY }), align: align("left") }),
+      ...Array(5).fill(""),
+      "",
+    ]);
+    rows.push(Array(8).fill(""));
+
+    // ── Section per US entity ──
+    for (const entry of US_ENTITY_ORDER) {
+      const ent = entityByCode[entry.short_code];
+      if (!ent) continue;
+
+      const costs = costsByEntityId[ent.id] || [];
+      const nonVoid = costs.filter(c => c.status !== "void");
+
+      // Entity header row
+      rows.push(["",
+        cell(`${ent.name}  (${entry.short_code})`, { fill: C.COBALT, font: font({ bold: true, color: C.WHITE, sz: 11 }), align: align("left") }),
+        ...Array(5).fill(cell("", { fill: C.COBALT })),
+        "",
+      ]);
+      rows.push(["",
+        cell(entry.role, { fill: C.COBALT_DARK, font: font({ italic: true, color: C.CREAM, sz: 9 }), align: align("left") }),
+        cell("Category",    { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("center") }),
+        cell("Amount (src)", { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+        cell("Src CCY",     { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("center") }),
+        cell("FX Rate",     { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("center") }),
+        cell("USD",         { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+        "",
+      ]);
+
+      // Income section (only FC-LLC for mgmt fee, FC-PLATFORM-GP for carry)
+      if (entry.short_code === "FC-LLC" && mgmtFeeIncome > 0) {
+        rows.push(["",
+          cell("INCOME", { fill: C.LIGHT_GREY, font: font({ bold: true, color: C.DARK_BROWN, sz: 9 }), align: align("left") }),
+          cell("advisory",    { fill: C.LIGHT_GREY, font: font({ color: C.MID_GREY, sz: 9 }), align: align("center") }),
+          cell(mgmtFeeIncome, { fill: C.LIGHT_GREY, font: font({ bold: true, color: C.GREEN_POS }), align: align("right"), numFmt: USD_FMT }),
+          cell("USD",         { fill: C.LIGHT_GREY, font: font({ color: C.MID_GREY, sz: 9 }), align: align("center") }),
+          cell(1.0,           { fill: C.LIGHT_GREY, font: font({ color: C.MID_GREY, sz: 9 }), align: align("center"), numFmt: "0.0000" }),
+          cell(mgmtFeeIncome, { fill: C.LIGHT_GREY, font: font({ bold: true, color: C.GREEN_POS }), align: align("right"), numFmt: USD_FMT }),
+          "",
+        ]);
+        rows.push(["",
+          cell("  Management Fee (6% × committed)", { fill: C.CREAM, font: font({ italic: true, sz: 8, color: C.MID_GREY }), align: align("left") }),
+          ...Array(5).fill(cell("", { fill: C.CREAM })),
+          "",
+        ]);
+      }
+      if (entry.short_code === "FC-PLATFORM-GP" && carryIncome > 0) {
+        rows.push(["",
+          cell("INCOME — CARRY", { fill: C.LIGHT_GREY, font: font({ bold: true, color: C.DARK_BROWN, sz: 9 }), align: align("left") }),
+          cell("carry",       { fill: C.LIGHT_GREY, font: font({ color: C.MID_GREY, sz: 9 }), align: align("center") }),
+          cell(carryIncome,   { fill: C.LIGHT_GREY, font: font({ bold: true, color: C.GREEN_POS }), align: align("right"), numFmt: USD_FMT }),
+          cell("USD",         { fill: C.LIGHT_GREY, font: font({ color: C.MID_GREY, sz: 9 }), align: align("center") }),
+          cell(1.0,           { fill: C.LIGHT_GREY, font: font({ color: C.MID_GREY, sz: 9 }), align: align("center"), numFmt: "0.0000" }),
+          cell(carryIncome,   { fill: C.LIGHT_GREY, font: font({ bold: true, color: C.GREEN_POS }), align: align("right"), numFmt: USD_FMT }),
+          "",
+        ]);
+      }
+
+      // Cost rows — iterate categories in order
+      let entityTotalUsd = 0;
+      let entityTotalAccrued = 0;
+      let entityTotalPaid = 0;
+
+      if (nonVoid.length === 0) {
+        rows.push(["",
+          cell("No costs recorded", { fill: C.CREAM, font: font({ italic: true, sz: 9, color: C.MID_GREY }), align: align("left") }),
+          ...Array(5).fill(cell("", { fill: C.CREAM })),
+          "",
+        ]);
+      } else {
+        const catMap = {};
+        for (const c of nonVoid) {
+          if (!catMap[c.category]) catMap[c.category] = [];
+          catMap[c.category].push(c);
+        }
+
+        // Cost sub-header
+        rows.push(["",
+          cell("COSTS", { fill: C.LIGHT_GREY, font: font({ bold: true, color: C.DARK_BROWN, sz: 9 }), align: align("left") }),
+          ...Array(5).fill(cell("", { fill: C.LIGHT_GREY })),
+          "",
+        ]);
+
+        let costRowIdx = 0;
+        for (const cat of [...CATS, ...Object.keys(catMap).filter(k => !CATS.includes(k))]) {
+          const catCosts = catMap[cat];
+          if (!catCosts) continue;
+
+          const catTotalSrc = catCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
+          const catTotalUsd = catCosts.reduce((s, c) => s + Number(c.amount_usd || 0), 0);
+          const fcCurrencies = [...new Set(catCosts.filter(c => c.currency !== "USD").map(c => c.currency))];
+          const rowBg = costRowIdx % 2 === 0 ? C.CREAM : C.LIGHT_GREY;
+
+          rows.push(["",
+            cell(`  ${cat.charAt(0).toUpperCase() + cat.slice(1)}`, { fill: rowBg, font: font({ color: C.DARK_BROWN }), align: align("left") }),
+            cell(cat, { fill: rowBg, font: font({ color: C.MID_GREY, sz: 9 }), align: align("center") }),
+            cell(catTotalSrc, { fill: rowBg, font: font({ color: fcCurrencies.length ? C.GOLD : C.MID_GREY }), align: align("right"), numFmt: USD_FMT }),
+            cell(fcCurrencies.length ? fcCurrencies.join(",") : "USD", { fill: rowBg, font: font({ color: C.MID_GREY, sz: 9 }), align: align("center") }),
+            cell("", { fill: rowBg, font: font({ color: C.MID_GREY, sz: 8 }), align: align("center") }),
+            cell(catTotalUsd, { fill: rowBg, font: font({ bold: true, color: C.DARK_BROWN }), align: align("right"), numFmt: USD_FMT }),
+            "",
+          ]);
+
+          entityTotalUsd     += catTotalUsd;
+          entityTotalAccrued += catCosts.filter(c => c.status === "accrued").reduce((s, c) => s + Number(c.amount_usd || 0), 0);
+          entityTotalPaid    += catCosts.filter(c => c.status === "paid")   .reduce((s, c) => s + Number(c.amount_usd || 0), 0);
+          costRowIdx++;
+        }
+      }
+
+      // Entity total row
+      rows.push(["",
+        cell("Total Costs (USD)", { fill: C.GOLD, font: font({ bold: true, color: C.DARK_BROWN }), align: align("left") }),
+        cell("",                  { fill: C.GOLD }),
+        cell("",                  { fill: C.GOLD }),
+        cell("",                  { fill: C.GOLD }),
+        cell(entityTotalAccrued > 0 ? `Accrued: ${fmtUSD(entityTotalAccrued)}` : "",
+          { fill: C.GOLD, font: font({ sz: 8, color: C.DARK_BROWN }), align: align("center") }),
+        cell(entityTotalUsd, { fill: C.GOLD, font: font({ bold: true, color: C.DARK_BROWN, sz: 11 }), align: align("right"), numFmt: USD_FMT }),
+        "",
+      ]);
+
+      rows.push(Array(8).fill(""));
+    }
+
+    // ── Consolidated Group Summary ──
+    const allUsCosts = (entityCosts || []).filter(c => {
+      const ent = entityById[c.entity_id];
+      return ent && ent.entity_type !== "holding_uk" && c.status !== "void";
+    });
+    const groupTotalUsd     = allUsCosts.reduce((s, c) => s + Number(c.amount_usd || 0), 0);
+    const groupTotalAccrued = allUsCosts.filter(c => c.status === "accrued").reduce((s, c) => s + Number(c.amount_usd || 0), 0);
+    const groupTotalPaid    = allUsCosts.filter(c => c.status === "paid")   .reduce((s, c) => s + Number(c.amount_usd || 0), 0);
+
+    rows.push(["",
+      cell("CONSOLIDATED GROUP SUMMARY (US ENTITIES)",
+        { fill: C.DARK_BROWN, font: font({ bold: true, color: C.WHITE, sz: 11 }), align: align("left") }),
+      ...Array(5).fill(cell("", { fill: C.DARK_BROWN })),
+      "",
+    ]);
+    rows.push(Array(8).fill(""));
+
+    // Category breakdown across all US entities
+    const groupByCat = {};
+    for (const c of allUsCosts) {
+      if (!groupByCat[c.category]) groupByCat[c.category] = 0;
+      groupByCat[c.category] += Number(c.amount_usd || 0);
+    }
+    rows.push(["",
+      cell("Category",   { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("left") }),
+      cell("",           { fill: C.COBALT_DARK }),
+      cell("",           { fill: C.COBALT_DARK }),
+      cell("",           { fill: C.COBALT_DARK }),
+      cell("",           { fill: C.COBALT_DARK }),
+      cell("Total USD",  { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+      "",
+    ]);
+    let catIdx = 0;
+    for (const [cat, total] of Object.entries(groupByCat).sort((a,b) => b[1]-a[1])) {
+      const rowBg = catIdx % 2 === 0 ? C.CREAM : C.LIGHT_GREY;
+      rows.push(["",
+        cell(cat.charAt(0).toUpperCase() + cat.slice(1), { fill: rowBg, font: font({ color: C.DARK_BROWN }), align: align("left") }),
+        cell("", { fill: rowBg }), cell("", { fill: rowBg }),
+        cell("", { fill: rowBg }), cell("", { fill: rowBg }),
+        cell(total, { fill: rowBg, font: font({ bold: true, color: C.DARK_BROWN }), align: align("right"), numFmt: USD_FMT }),
+        "",
+      ]);
+      catIdx++;
+    }
+    if (catIdx === 0) {
+      rows.push(["",
+        cell("No costs recorded for any US entity", { font: font({ italic: true, sz: 9, color: C.MID_GREY }), align: align("left") }),
+        "", "", "", "", "", "",
+      ]);
+    }
+    rows.push(["",
+      cell("TOTAL GROUP COSTS", { fill: C.GOLD, font: font({ bold: true, color: C.DARK_BROWN }), align: align("left") }),
+      cell("", { fill: C.GOLD }), cell("", { fill: C.GOLD }),
+      cell("", { fill: C.GOLD }),
+      cell(groupTotalAccrued > 0 ? `Accrued: ${fmtUSD(groupTotalAccrued)}` : "",
+        { fill: C.GOLD, font: font({ sz: 8, color: C.DARK_BROWN }), align: align("center") }),
+      cell(groupTotalUsd, { fill: C.GOLD, font: font({ bold: true, color: C.DARK_BROWN, sz: 12 }), align: align("right"), numFmt: USD_FMT }),
+      "",
+    ]);
+    rows.push(["",
+      cell(`Paid: ${fmtUSD(groupTotalPaid)}  |  Accrued: ${fmtUSD(groupTotalAccrued)}`,
+        { font: font({ italic: true, sz: 8, color: C.MID_GREY }), align: align("left") }),
+      "", "", "", "", "", "",
+    ]);
+
+    rows.push(Array(8).fill(""));
+    rows.push(["",
+      cell(`Source: entity_costs table + entities · Supabase · ${now}`,
+        { font: font({ italic: true, sz: 8, color: C.MID_GREY }), align: align("left") }),
+      "", "", "", "", "", "",
+    ]);
+
+    const wsGP = makeSheet(rows, [], COLS_PL);
+    XLSX.utils.book_append_sheet(wb, wsGP, "Group P&L");
   }
 
   // ── WRITE ──────────────────────────────────────────────────────────────────
