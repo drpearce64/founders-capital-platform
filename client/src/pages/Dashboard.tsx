@@ -4,6 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { fmtUSD, fmtDate } from "@/lib/utils";
 import { TrendingUp, Users, Building2, DollarSign, AlertCircle, Network, ChevronRight, X } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface DashboardData {
   spv_count: number;
@@ -21,31 +22,33 @@ interface DashboardData {
 function StatCard({ label, value, sub, icon: Icon, accent }: {
   label: string; value: string; sub?: string; icon: any; accent?: boolean;
 }) {
+  const iconColor = accent ? "hsl(231 70% 54%)" : "hsl(var(--muted-foreground))";
   return (
-    <div
-      className="rounded-xl p-5 border"
-      style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-    >
-      <div className="flex items-start justify-between mb-3">
-        <span className="text-xs font-medium uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
-          {label}
-        </span>
-        <div
-          className="p-1.5 rounded-md"
-          style={{ background: accent ? "hsl(213 94% 62% / 0.12)" : "hsl(var(--secondary))" }}
-        >
-          <Icon size={14} style={{ color: accent ? "hsl(213 94% 62%)" : "hsl(var(--muted-foreground))" }} />
+    <Card className="border" style={{ borderColor: "hsl(var(--border))" }}>
+      <CardContent className="pt-5 pb-4">
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-medium mb-1 uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
+              {label}
+            </p>
+            <p className="text-xl font-semibold leading-tight mono" style={{ color: "hsl(var(--foreground))" }}>
+              {value}
+            </p>
+            {sub && (
+              <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+                {sub}
+              </p>
+            )}
+          </div>
+          <div
+            className="p-2 rounded-lg flex-shrink-0 ml-3"
+            style={{ background: iconColor + "22" }}
+          >
+            <Icon size={15} style={{ color: iconColor }} />
+          </div>
         </div>
-      </div>
-      <div className="text-2xl font-semibold mono" style={{ color: "hsl(var(--foreground))" }}>
-        {value}
-      </div>
-      {sub && (
-        <div className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
-          {sub}
-        </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 

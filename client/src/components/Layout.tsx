@@ -106,24 +106,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           className="flex items-center gap-3 px-5 py-5 border-b"
           style={{ borderColor: "hsl(var(--sidebar-border))" }}
         >
-          <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-label="Founders Capital" role="img">
-            <rect width="30" height="30" rx="6" fill="#3B5BDB"/>
-            <rect x="6"    y="6"    width="5" height="5" rx="1.2" fill="white"/>
-            <rect x="12.5" y="6"    width="5" height="5" rx="1.2" fill="white"/>
-            <rect x="19"   y="6"    width="5" height="5" rx="1.2" fill="white"/>
-            <rect x="6"    y="12.5" width="5" height="5" rx="1.2" fill="white"/>
-            <rect x="12.5" y="12.5" width="5" height="5" rx="1.2" fill="white" opacity="0.45"/>
-            <rect x="19"   y="12.5" width="5" height="5" rx="1.2" fill="white"/>
-            <rect x="6"    y="19"   width="5" height="5" rx="1.2" fill="white"/>
-            <rect x="12.5" y="19"   width="5" height="5" rx="1.2" fill="white"/>
-            <rect x="19"   y="19"   width="5" height="5" rx="1.2" fill="white" opacity="0.45"/>
+          {/* FC mark — exact match to founders-capital.com logomark */}
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="Founders Capital" role="img">
+            {/* Top row: 3 squares */}
+            <rect x="1"  y="1"  width="9" height="9" rx="1.5" fill="white"/>
+            <rect x="12" y="1"  width="9" height="9" rx="1.5" fill="white"/>
+            <rect x="23" y="1"  width="8" height="9" rx="1.5" fill="white"/>
+            {/* Middle row: left + right, centre gap = the FC mark cutout */}
+            <rect x="1"  y="12" width="9" height="9" rx="1.5" fill="white"/>
+            {/* centre-middle deliberately absent */}
+            <rect x="23" y="12" width="8" height="9" rx="1.5" fill="white"/>
+            {/* Bottom row: left + centre only (bottom-right absent) */}
+            <rect x="1"  y="23" width="9" height="8" rx="1.5" fill="white"/>
+            <rect x="12" y="23" width="9" height="8" rx="1.5" fill="white"/>
+            {/* bottom-right absent */}
           </svg>
           <div>
-            <div className="text-sm font-semibold leading-tight" style={{ color: "hsl(0 0% 95%)" }}>
+            <div className="text-sm font-semibold leading-tight tracking-tight" style={{ color: "hsl(0 0% 96%)" }}>
               Founders Capital
             </div>
-            <div className="text-xs" style={{ color: "hsl(0 0% 55%)" }}>
-              Platform
+            <div className="text-xs" style={{ color: "hsl(0 0% 45%)" }}>
+              Partner Portal
             </div>
           </div>
         </div>
@@ -214,13 +217,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Footer — shows active jurisdiction */}
+        {/* Footer */}
         <div
-          className="px-5 py-4 border-t text-xs flex items-center gap-2"
-          style={{ borderColor: "hsl(var(--sidebar-border))", color: "hsl(var(--muted-foreground))" }}
+          className="px-5 py-3.5 border-t text-xs"
+          style={{ borderColor: "hsl(var(--sidebar-border))" }}
         >
-          <span>{jInfo.flag}</span>
-          <span>{jInfo.label} {jInfo.sub}</span>
+          <div className="font-medium" style={{ color: "hsl(0 0% 55%)" }}>founders-capital.com</div>
+          <div className="mt-0.5" style={{ color: "hsl(0 0% 30%)" }}>© {new Date().getFullYear()} Founders Capital</div>
         </div>
       </aside>
 
