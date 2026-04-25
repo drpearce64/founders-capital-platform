@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText } from "lucide-react";
+import { LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield, Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw, PieChart } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, section: "overview" },
@@ -11,8 +11,9 @@ const nav = [
   { href: "/series-expenses", label: "Series Expenses", icon: Receipt, section: "finance" },
   { href: "/waterfall", label: "Waterfall", icon: TrendingUp, section: "finance" },
   { href: "/nav-marks", label: "NAV / Fair Value", icon: BarChart3, section: "finance" },
+  { href: "/statements", label: "Statements", icon: FileText, section: "reporting" },
+  { href: "/airtable-sync", label: "Airtable Sync", icon: RefreshCw, section: "reporting" },
   { href: "/documents", label: "Documents", icon: FolderOpen, section: "admin" },
-  { href: "/statements", label: "Statements", icon: FileText, section: "admin" },
   { href: "/audit-log", label: "Audit Log", icon: Shield, section: "admin" },
   { href: "/settings", label: "Users & Roles", icon: UserCog, section: "admin" },
 ];
@@ -21,6 +22,7 @@ const sections: Record<string, string> = {
   overview: "Overview",
   lps: "Investors",
   finance: "Finance",
+  reporting: "Reporting",
   admin: "Administration",
 };
 

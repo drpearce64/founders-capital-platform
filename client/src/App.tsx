@@ -17,6 +17,7 @@ import NAVMarks from "./pages/NAVMarks";
 import Documents from "./pages/Documents";
 import Settings from "./pages/Settings";
 import QuarterlyStatements from "./pages/QuarterlyStatements";
+import AirtableSync from "./pages/AirtableSync";
 import NotFound from "./pages/not-found";
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/documents" component={Documents} />
             <Route path="/settings" component={Settings} />
             <Route path="/statements" component={QuarterlyStatements} />
+            <Route path="/airtable-sync" component={AirtableSync} />
             <Route component={NotFound} />
           </Switch>
         </Layout>
