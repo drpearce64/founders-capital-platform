@@ -1,656 +1,304 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
-import {
-  Network,
-  Plus,
-  ChevronRight,
-  ChevronDown,
-  Building2,
-  DollarSign,
-  CheckCircle2,
-  Clock,
-} from "lucide-react";
+import { Network } from "lucide-react";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-interface Entity {
-  id: string;
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface EntityCard {
   name: string;
-  short_code: string;
-  entity_type: string;
-  status: string;
-  jurisdiction?: string;
-  reporting_currency: string;
-  parent_entity_id?: string;
-}
-
-interface EntityCost {
-  id: string;
-  entity_id: string;
-  cost_date: string;
-  description: string;
-  category: string;
-  amount: number;
-  currency: string;
-  fx_rate_to_usd: number;
-  amount_usd: number;
-  status: string;
-  paid_date?: string;
-  payment_reference?: string;
-  is_recharged?: boolean;
-  recharged_to_entity_id?: string;
+  type: string;
+  reg?: string;
+  address?: string;
   notes?: string;
+  highlight?: string; // coloured sub-line
 }
 
-interface CostSummary {
-  entity_id: string;
-  entity_name: string;
-  short_code: string;
-  entity_type: string;
-  category: string;
-  transaction_count: number;
-  total_usd: number;
-  accrued_usd: number;
-  paid_usd: number;
-  foreign_currencies: string[] | null;
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-const fmt = (n: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
-
-const fmtSrc = (amount: number, currency: string) => {
-  if (currency === "USD") return "";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+// ── Colour palette by jurisdiction ────────────────────────────────────────────
+const COLORS = {
+  uk:     { header: "#1B2A4A", border: "#3B5BDB", badge: "#3B5BDB22", badgeText: "#7B9EF5" },
+  us:     { header: "#1B2A4A", border: "#3B5BDB", badge: "#3B5BDB22", badgeText: "#7B9EF5" },
+  cayman: { header: "#0D4A35", border: "#0CA678", badge: "#0CA67822", badgeText: "#3ECBA0" },
 };
 
-const fmtDate = (d?: string) =>
-  d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
-
-const ENTITY_TYPE_META: Record<string, { label: string; color: string }> = {
-  holding_uk:    { label: "UK Holdco",     color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300" },
-  management_co: { label: "Management Co", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
-  holding_us:    { label: "US Holdco",     color: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300" },
-  gp_entity:     { label: "GP Entity",     color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
-  fund:          { label: "Fund",          color: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300" },
-  master:        { label: "Master LLC",    color: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300" },
-  series_spv:    { label: "Series SPV",    color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
-};
-
-const CATEGORIES = ["legal", "formation", "advisory", "platform", "staffing", "travel", "other"];
-
-const statusBadge = (status: string) => {
-  const map: Record<string, { label: string; cls: string }> = {
-    accrued: { label: "Accrued", cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
-    paid:    { label: "Paid",    cls: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
-    void:    { label: "Void",    cls: "bg-gray-100 text-gray-400" },
-  };
-  const s = map[status] || map.accrued;
-  return <Badge className={`${s.cls} border-0 font-medium text-xs`}>{s.label}</Badge>;
-};
-
-// ── Add Cost Dialog ────────────────────────────────────────────────────────────
-function AddCostDialog({ entities, onClose }: { entities: Entity[]; onClose: () => void }) {
-  const { toast } = useToast();
-  const [form, setForm] = useState({
-    entity_id: "",
-    cost_date: new Date().toISOString().slice(0, 10),
-    description: "",
-    category: "legal",
-    amount: "",
-    currency: "USD",
-    fx_rate_to_usd: "1.0",
-    status: "accrued",
-    notes: "",
-  });
-
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-
-  // Auto-set FX rate when currency changes
-  const handleCurrencyChange = (v: string) => {
-    set("currency", v);
-    if (v === "USD") set("fx_rate_to_usd", "1.0");
-  };
-
-  const mutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/entity-costs", {
-      ...form,
-      amount: parseFloat(form.amount) || 0,
-      fx_rate_to_usd: parseFloat(form.fx_rate_to_usd) || 1.0,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entity-costs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/entity-costs/summary"] });
-      toast({ title: "Cost entry added" });
-      onClose();
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  // US-reporting entities only (exclude UK holdco)
-  const usEntities = entities.filter(e => e.reporting_currency === "USD" || e.short_code !== "FC-GROUP-HOLDING");
-
+// ── Entity Card Component ──────────────────────────────────────────────────────
+function EntityBox({
+  entity,
+  flag,
+  jurisdiction,
+  wide = false,
+}: {
+  entity: EntityCard;
+  flag: string;
+  jurisdiction: "uk" | "us" | "cayman";
+  wide?: boolean;
+}) {
+  const c = COLORS[jurisdiction];
   return (
-    <div className="space-y-4 pt-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2 col-span-2">
-          <Label>Entity *</Label>
-          <Select value={form.entity_id} onValueChange={v => set("entity_id", v)}>
-            <SelectTrigger data-testid="select-entity"><SelectValue placeholder="Select entity…" /></SelectTrigger>
-            <SelectContent>
-              {usEntities.map(e => (
-                <SelectItem key={e.id} value={e.id}>
-                  {e.name} <span className="text-muted-foreground text-xs ml-1">({e.short_code})</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2 col-span-2">
-          <Label>Description *</Label>
-          <Input placeholder="e.g. Delaware formation filing fee" value={form.description} onChange={e => set("description", e.target.value)} data-testid="input-cost-description" />
-        </div>
-
-        <div className="space-y-2">
-          <Label>Category</Label>
-          <Select value={form.category} onValueChange={v => set("category", v)}>
-            <SelectTrigger data-testid="select-category"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Date</Label>
-          <Input type="date" value={form.cost_date} onChange={e => set("cost_date", e.target.value)} data-testid="input-cost-date" />
-        </div>
-
-        <div className="space-y-2">
-          <Label>Amount *</Label>
-          <Input type="number" placeholder="0.00" value={form.amount} onChange={e => set("amount", e.target.value)} data-testid="input-cost-amount" />
-        </div>
-
-        <div className="space-y-2">
-          <Label>Currency</Label>
-          <Select value={form.currency} onValueChange={handleCurrencyChange}>
-            <SelectTrigger data-testid="select-cost-currency"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="USD">USD</SelectItem>
-              <SelectItem value="GBP">GBP</SelectItem>
-              <SelectItem value="EUR">EUR</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {form.currency !== "USD" && (
-          <div className="space-y-2 col-span-2">
-            <Label>FX Rate to USD <span className="text-muted-foreground text-xs">(1 {form.currency} = ? USD)</span></Label>
-            <Input type="number" step="0.0001" placeholder="e.g. 1.27" value={form.fx_rate_to_usd} onChange={e => set("fx_rate_to_usd", e.target.value)} data-testid="input-fx-rate" />
-            {form.amount && form.fx_rate_to_usd && (
-              <p className="text-xs text-muted-foreground">
-                USD equivalent: {fmt(parseFloat(form.amount) * parseFloat(form.fx_rate_to_usd))}
-              </p>
-            )}
+    <div
+      className={`rounded-lg overflow-hidden border text-left ${wide ? "w-full" : "w-64"}`}
+      style={{ borderColor: c.border, background: "hsl(var(--card))" }}
+    >
+      {/* Header bar */}
+      <div
+        className="flex items-center justify-between px-3 py-2"
+        style={{ background: c.header }}
+      >
+        <span className="text-xs font-bold uppercase tracking-wide text-white leading-snug">
+          {entity.name}
+        </span>
+        <span className="text-base ml-2 flex-shrink-0">{flag}</span>
+      </div>
+      {/* Body */}
+      <div className="px-3 py-2.5 text-xs space-y-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+        <div style={{ color: "hsl(var(--foreground))" }}>{entity.type}</div>
+        {entity.highlight && (
+          <div className="font-semibold" style={{ color: c.badgeText }}>{entity.highlight}</div>
+        )}
+        {entity.reg && <div>{entity.reg}</div>}
+        {entity.address && <div className="opacity-75">{entity.address}</div>}
+        {entity.notes && (
+          <div className="mt-1.5 pt-1.5 border-t text-xs leading-relaxed opacity-80"
+            style={{ borderColor: "hsl(var(--border))" }}>
+            {entity.notes}
           </div>
         )}
-
-        <div className="space-y-2">
-          <Label>Status</Label>
-          <Select value={form.status} onValueChange={v => set("status", v)}>
-            <SelectTrigger data-testid="select-cost-status"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="accrued">Accrued</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2 col-span-2">
-          <Label>Notes</Label>
-          <Input placeholder="Optional notes" value={form.notes} onChange={e => set("notes", e.target.value)} data-testid="input-cost-notes" />
-        </div>
-      </div>
-
-      <div className="flex gap-2 pt-2">
-        <Button
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !form.entity_id || !form.description || !form.amount}
-          className="flex-1"
-          data-testid="button-save-cost"
-        >
-          {mutation.isPending ? "Saving…" : "Add Cost"}
-        </Button>
-        <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
       </div>
     </div>
   );
 }
 
-// ── Entity Tree Node ──────────────────────────────────────────────────────────
-function EntityNode({
-  entity,
-  allEntities,
-  costsByEntity,
-  depth,
-  selectedId,
-  onSelect,
-}: {
-  entity: Entity;
-  allEntities: Entity[];
-  costsByEntity: Record<string, CostSummary[]>;
-  depth: number;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(depth < 2);
-  const children = allEntities.filter(e => e.parent_entity_id === entity.id);
-  const costs = costsByEntity[entity.id] || [];
-  const totalUsd = costs.reduce((s, c) => s + (c.total_usd || 0), 0);
-  const accruedUsd = costs.reduce((s, c) => s + (c.accrued_usd || 0), 0);
-  const meta = ENTITY_TYPE_META[entity.entity_type] || { label: entity.entity_type, color: "bg-gray-100 text-gray-600" };
-  const isSelected = selectedId === entity.id;
-
+// ── Connector arrows ──────────────────────────────────────────────────────────
+function Arrow({ label, dashed = false }: { label?: string; dashed?: boolean }) {
   return (
-    <div>
+    <div className="flex flex-col items-center py-1 select-none" style={{ minHeight: 32 }}>
       <div
-        className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors ${isSelected ? "bg-primary/10 border border-primary/20" : "hover:bg-muted/50"}`}
-        style={{ paddingLeft: `${12 + depth * 20}px` }}
-        onClick={() => onSelect(entity.id)}
-        data-testid={`entity-node-${entity.short_code}`}
-      >
-        <button
-          onClick={e => { e.stopPropagation(); setExpanded(x => !x); }}
-          className="text-muted-foreground w-4 flex-shrink-0"
-        >
-          {children.length > 0
-            ? (expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />)
-            : <span className="h-3.5 w-3.5 block" />}
-        </button>
-        <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium truncate">{entity.name}</span>
-            <Badge className={`${meta.color} border-0 text-xs font-medium flex-shrink-0`}>{meta.label}</Badge>
-            {entity.jurisdiction && (
-              <span className="text-xs text-muted-foreground flex-shrink-0">{entity.jurisdiction}</span>
-            )}
-          </div>
-        </div>
-        {totalUsd > 0 && (
-          <div className="text-right flex-shrink-0 ml-2">
-            <div className="text-xs font-semibold text-foreground">{fmt(totalUsd)}</div>
-            {accruedUsd > 0 && <div className="text-xs text-amber-600">{fmt(accruedUsd)} accrued</div>}
-          </div>
-        )}
+        className="w-px flex-1"
+        style={{
+          minHeight: 20,
+          background: dashed
+            ? "repeating-linear-gradient(to bottom, hsl(var(--border)) 0, hsl(var(--border)) 4px, transparent 4px, transparent 8px)"
+            : "hsl(var(--border))",
+        }}
+      />
+      {label && (
+        <span className="text-xs px-1.5 py-0.5 rounded my-0.5 font-medium"
+          style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+          {label}
+        </span>
+      )}
+      {/* Arrowhead */}
+      <div style={{ width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: "6px solid hsl(var(--border))" }} />
+    </div>
+  );
+}
+
+function HorizArrow({ label, dashed = false }: { label?: string; dashed?: boolean }) {
+  return (
+    <div className="flex items-center gap-1 px-1 select-none self-center" style={{ minWidth: 60 }}>
+      <div
+        className="flex-1 h-px"
+        style={{
+          background: dashed
+            ? "repeating-linear-gradient(to right, hsl(var(--border)) 0, hsl(var(--border)) 4px, transparent 4px, transparent 8px)"
+            : "hsl(var(--border))",
+        }}
+      />
+      {label && (
+        <span className="text-xs px-1.5 py-0.5 rounded font-medium shrink-0"
+          style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+          {label}
+        </span>
+      )}
+      <div style={{ width: 0, height: 0, borderTop: "5px solid transparent", borderBottom: "5px solid transparent", borderLeft: "6px solid hsl(var(--border))" }} />
+    </div>
+  );
+}
+
+// ── Section header ────────────────────────────────────────────────────────────
+function JurisdictionHeader({ flag, label }: { flag: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-4">
+      <span className="text-xl">{flag}</span>
+      <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
+        {label}
+      </h2>
+      <div className="flex-1 h-px" style={{ background: "hsl(var(--border))" }} />
+    </div>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────────────
+export default function GroupStructure() {
+  return (
+    <div className="p-8 max-w-7xl mx-auto">
+      {/* Page header */}
+      <div className="mb-8">
+        <h1 className="text-xl font-semibold flex items-center gap-2" style={{ color: "hsl(var(--foreground))" }}>
+          <Network size={18} style={{ color: "hsl(var(--primary))" }} />
+          Group Structure
+        </h1>
+        <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+          Multi-jurisdictional legal entity overview · As at April 2026
+        </p>
       </div>
-      {expanded && children.length > 0 && (
-        <div>
-          {children.map(child => (
-            <EntityNode
-              key={child.id}
-              entity={child}
-              allEntities={allEntities}
-              costsByEntity={costsByEntity}
-              depth={depth + 1}
-              selectedId={selectedId}
-              onSelect={onSelect}
-            />
+
+      {/* ── TIER 1: UK Row ───────────────────────────────────────────────────── */}
+      <JurisdictionHeader flag="🇬🇧" label="England & Wales" />
+
+      <div className="flex flex-wrap items-start gap-6 mb-2">
+        {/* FC Group Holding */}
+        <EntityBox flag="🇬🇧" jurisdiction="uk" entity={{
+          name: "FC Group Holding Ltd.",
+          type: "Private Ltd — England & Wales",
+          highlight: "Co. No. 14797242",
+          address: "72 Blackfriars Rd, London SE1 8HA",
+          notes: "Ultimate UK holding company. Sole shareholder of FC US Holdings LLC. Director & CEO: Richard Hadler. Incorporated 12 April 2023.",
+        }} />
+
+        <div className="flex items-center gap-1 self-center text-xs opacity-40 mx-2">delegates mgt.</div>
+
+        {/* Paxiot */}
+        <EntityBox flag="🇬🇧" jurisdiction="uk" entity={{
+          name: "Paxiot Limited",
+          type: "FCA-Authorised AIFM — England & Wales",
+          highlight: "Co. No. 07455644",
+          address: "6 Kinghorn St, London EC1A 7HT",
+          notes: "Appointed AIFM for FC Strat. Opps. Fund I LP. FCA-regulated under AIFMD. Richard Hadler seconded from FC Group Holding Ltd. Incorporated 30 November 2010.",
+        }} />
+
+        <div className="flex items-center gap-1 self-center text-xs opacity-40 mx-2">owns</div>
+
+        {/* Nominees */}
+        <EntityBox flag="🇬🇧" jurisdiction="uk" entity={{
+          name: "Founders Capital Nominees Ltd",
+          type: "Nominee / Custody Vehicle",
+          highlight: "Co. No. 15912342",
+          address: "72 Blackfriars Rd, London SE1 8HA",
+          notes: "Holds legal title to client investments under bare trust. CASS-compliant nominee structure. Directors: Richard Hadler, Hugo Croft Tilmouth. Incorporated 22 August 2024.",
+        }} />
+
+        {/* Syndicate */}
+        <EntityBox flag="🇬🇧" jurisdiction="uk" entity={{
+          name: "Founders Capital Syndicate Limited",
+          type: "Syndicate / Non-Trading Company",
+          highlight: "Co. No. 14959328",
+          address: "Unit 105, 65–69 Shelton St, London WC2H 9HE",
+          notes: "Non-trading syndicate vehicle. Previously controlled by Join Odin Ltd; control transferred to Odin (TT) Nominees Ltd (7 Oct 2024). Currently non-operational. Incorporated 24 June 2023.",
+        }} />
+      </div>
+
+      {/* Connector: FC Group Holding → US Holdings */}
+      <div className="flex items-start gap-6 mb-2">
+        <div className="flex flex-col items-center" style={{ width: 256 }}>
+          <Arrow />
+        </div>
+        {/* Paxiot AIFM dashed arrow to Cayman — shown in Cayman section */}
+      </div>
+
+      {/* ── TIER 2: US Row ───────────────────────────────────────────────────── */}
+      <JurisdictionHeader flag="🇺🇸" label="Delaware, USA" />
+
+      {/* US Holdings */}
+      <div className="flex flex-col items-start mb-2" style={{ width: 256 }}>
+        <EntityBox flag="🇺🇸" jurisdiction="us" entity={{
+          name: "FC US Holdings LLC",
+          type: "Delaware Limited Liability Company",
+          highlight: "Intermediate US holding entity",
+          notes: "100% owned by FC Group Holding Ltd. Sits between UK holdco and Delaware partnership structure. Facilitates HSBC US banking relationships.",
+        }} />
+        <Arrow />
+        <EntityBox flag="🇺🇸" jurisdiction="us" entity={{
+          name: "FC Platform GP, LP",
+          type: "Delaware Limited Partnership",
+          highlight: "GP of Founders Capital Platform LP",
+          address: "Registered Agent: Delaware",
+          notes: "General Partner of the Series LP master entity. Controlled via FC US Holdings LLC → FC Group Holding Ltd. Authorised to create and manage Protected Series.",
+        }} />
+        <Arrow />
+        <EntityBox flag="🇺🇸" jurisdiction="us" entity={{
+          name: "Founders Capital Platform LP",
+          type: "Delaware Series Limited Partnership",
+          highlight: "Filed: 11 July 2025",
+          address: "c/o Resident Agents Inc., Dover DE 19901",
+          notes: "Master entity for all Vector Series SPVs. Protected Series structure under §17-218(b) DRULPA. Each Series is ring-fenced with segregated assets and liabilities.",
+        }} />
+      </div>
+
+      {/* Vector series grid */}
+      <div className="mb-2 ml-0">
+        <div className="flex items-end gap-0 mb-0" style={{ marginLeft: 120 }}>
+          {/* horizontal connector line across 5 columns */}
+        </div>
+        <div className="flex flex-wrap gap-4 mt-1">
+          {[
+            { label: "Vector I Series",   ein: "EIN: Pending",     ref: "FC-VECTOR-I" },
+            { label: "Vector II Series",  ein: "EIN: Pending",     ref: "FC-VECTOR-II" },
+            { label: "Vector III Series · Reach Power",      ein: "EIN: 36-5168991",  ref: "FC-VECTOR-III" },
+            { label: "Vector IV Series · Project Prometheus", ein: "EIN: 61-2311112",  ref: "FC-VECTOR-IV" },
+            { label: "Vector V Series",   ein: "EIN: Confirmed",   ref: "FC-VECTOR-V" },
+          ].map(v => (
+            <div key={v.ref} className="rounded-lg overflow-hidden border" style={{ borderColor: COLORS.us.border, background: "hsl(var(--card))", width: 210 }}>
+              <div className="flex items-center justify-between px-3 py-1.5" style={{ background: COLORS.us.header }}>
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-white leading-tight">FC Platform LP</div>
+                  <div className="text-xs text-blue-300 leading-tight">{v.label}</div>
+                </div>
+                <span className="text-base ml-1">🇺🇸</span>
+              </div>
+              <div className="px-3 py-2 text-xs space-y-0.5">
+                <div style={{ color: "hsl(var(--foreground))" }}>Protected Series — Delaware LP</div>
+                <div className="font-semibold" style={{ color: COLORS.us.badgeText }}>{v.ein}</div>
+                <div className="opacity-60" style={{ color: "hsl(var(--muted-foreground))" }}>{v.ref}</div>
+              </div>
+            </div>
           ))}
         </div>
-      )}
-    </div>
-  );
-}
+      </div>
 
-// ── Main Component ─────────────────────────────────────────────────────────────
-export default function GroupStructure() {
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [filterCategory, setFilterCategory] = useState("all");
-  const { toast } = useToast();
+      {/* ── TIER 3: Cayman Row ───────────────────────────────────────────────── */}
+      <div className="mt-10">
+        <JurisdictionHeader flag="🇰🇾" label="Cayman Islands" />
 
-  const { data: entities = [], isLoading: loadingEntities } = useQuery<Entity[]>({
-    queryKey: ["/api/entities"],
-  });
-
-  const { data: costs = [], isLoading: loadingCosts } = useQuery<EntityCost[]>({
-    queryKey: ["/api/entity-costs"],
-  });
-
-  const { data: summary = [] } = useQuery<CostSummary[]>({
-    queryKey: ["/api/entity-costs/summary"],
-  });
-
-  const markPaidMutation = useMutation({
-    mutationFn: ({ id, paidDate }: { id: string; paidDate: string }) =>
-      apiRequest("PATCH", `/api/entity-costs/${id}`, { status: "paid", paid_date: paidDate }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entity-costs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/entity-costs/summary"] });
-      toast({ title: "Cost marked as paid" });
-    },
-  });
-
-  // Group summary by entity_id
-  const costsByEntity: Record<string, CostSummary[]> = {};
-  for (const row of summary) {
-    if (!costsByEntity[row.entity_id]) costsByEntity[row.entity_id] = [];
-    costsByEntity[row.entity_id].push(row);
-  }
-
-  // Root entities (no parent, or parent is UK holdco which we don't drill into)
-  const rootEntities = entities.filter(e =>
-    !e.parent_entity_id ||
-    entities.find(p => p.id === e.parent_entity_id)?.entity_type === "holding_uk"
-  ).filter(e => e.entity_type !== "holding_uk");
-
-  // Selected entity detail
-  const selectedEntity = entities.find(e => e.id === selectedEntityId);
-  const entityCosts = costs.filter(c =>
-    c.entity_id === selectedEntityId &&
-    (filterCategory === "all" || c.category === filterCategory)
-  );
-
-  // KPIs across all US entities
-  const allUsEntities = entities.filter(e => e.entity_type !== "holding_uk");
-  const totalUsdYtd = summary
-    .filter(s => allUsEntities.some(e => e.id === s.entity_id))
-    .reduce((s, r) => s + (r.total_usd || 0), 0);
-  const totalAccrued = summary
-    .filter(s => allUsEntities.some(e => e.id === s.entity_id))
-    .reduce((s, r) => s + (r.accrued_usd || 0), 0);
-  const totalPaid = summary
-    .filter(s => allUsEntities.some(e => e.id === s.entity_id))
-    .reduce((s, r) => s + (r.paid_usd || 0), 0);
-
-  return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Network className="h-5 w-5 text-primary" />
-            Group Structure
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            US entity hierarchy — costs &amp; P&amp;L by entity, reported in USD
-          </p>
+        {/* AIFM delegation note */}
+        <div className="mb-4 flex items-center gap-2 text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+          <span className="opacity-60">Paxiot Limited (UK AIFM)</span>
+          <div className="flex-shrink-0 flex items-center gap-1">
+            <div className="w-8 border-t-2 border-dashed" style={{ borderColor: "hsl(var(--border))" }} />
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "hsl(var(--muted))" }}>AIFM delegation</span>
+            <div className="w-8 border-t-2 border-dashed" style={{ borderColor: "hsl(var(--border))" }} />
+            <div style={{ width: 0, height: 0, borderTop: "4px solid transparent", borderBottom: "4px solid transparent", borderLeft: "5px solid hsl(var(--border))" }} />
+          </div>
+          <span className="opacity-60">FC Strat. Opps. Fund I LP</span>
         </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1.5" data-testid="button-add-cost-open">
-              <Plus className="h-4 w-4" /> Add Cost
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle>Add Cost Entry</DialogTitle></DialogHeader>
-            <AddCostDialog entities={entities} onClose={() => setAddOpen(false)} />
-          </DialogContent>
-        </Dialog>
+
+        <div className="flex flex-col items-start" style={{ width: 290 }}>
+          <EntityBox flag="🇰🇾" jurisdiction="cayman" wide entity={{
+            name: "FC Strat. Opps. Fund I GP Limited",
+            type: "Cayman Islands Exempted Company",
+            highlight: "General Partner of Cayman LP",
+            address: "Walkers Corporate Ltd, Grand Cayman",
+            notes: "Sole GP of Founders Capital Strat. Opps. Fund I LP. Sole director: Richard Hadler (UK). Management delegated to Paxiot Limited. Incorporated 9 October 2025.",
+          }} />
+          <Arrow />
+          <EntityBox flag="🇰🇾" jurisdiction="cayman" wide entity={{
+            name: "Founders Capital Strat. Opps. Fund I LP",
+            type: "Cayman Islands Exempted Limited Partnership",
+            highlight: "Reg. No. 134092 · CIMA Registered",
+            address: "CIMA — Exempted LP Register",
+            notes: "Investment fund targeting AI & Robotics — early and late stage. Target 15–20 portfolio positions. AIFM: Paxiot Limited (UK). Base currency: USD. Registered 10 October 2025.",
+          }} />
+        </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Costs (USD)</p>
-                <p className="text-2xl font-bold mt-1">{fmt(totalUsdYtd)}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">All US entities</p>
-              </div>
-              <DollarSign className="h-5 w-5 text-primary mt-0.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Accrued</p>
-                <p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">{fmt(totalAccrued)}</p>
-              </div>
-              <Clock className="h-5 w-5 text-amber-500 mt-0.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Paid</p>
-                <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{fmt(totalPaid)}</p>
-              </div>
-              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Legend */}
+      <div className="mt-10 pt-6 border-t flex flex-wrap gap-6 text-xs" style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-px" style={{ background: "hsl(var(--border))" }} />
+          <span>Ownership / control</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-6 border-t-2 border-dashed" style={{ borderColor: "hsl(var(--border))" }} />
+          <span>Management / service delegation</span>
+        </div>
+        <div className="ml-auto opacity-60">All UK entities: Companies House, England & Wales · Source: April 2026</div>
       </div>
-
-      {/* Two-panel layout: tree + detail */}
-      <div className="grid grid-cols-5 gap-4">
-        {/* Entity Tree */}
-        <Card className="col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Entity Hierarchy</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {loadingEntities ? (
-              <div className="space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
-            ) : rootEntities.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No entities found</p>
-            ) : (
-              <div className="space-y-0.5">
-                {rootEntities.map(e => (
-                  <EntityNode
-                    key={e.id}
-                    entity={e}
-                    allEntities={entities}
-                    costsByEntity={costsByEntity}
-                    depth={0}
-                    selectedId={selectedEntityId}
-                    onSelect={setSelectedEntityId}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Cost Detail */}
-        <Card className="col-span-3">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-sm font-semibold">
-                {selectedEntity ? (
-                  <span>{selectedEntity.name} — Costs</span>
-                ) : (
-                  <span className="text-muted-foreground font-normal">Select an entity to view costs</span>
-                )}
-              </CardTitle>
-              {selectedEntity && (
-                <Select value={filterCategory} onValueChange={setFilterCategory}>
-                  <SelectTrigger className="h-7 w-36 text-xs" data-testid="select-filter-category">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {CATEGORIES.map(c => (
-                      <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {!selectedEntity ? (
-              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                <Network className="h-12 w-12 mb-3 opacity-15" />
-                <p className="text-sm">Click an entity in the tree to see its costs</p>
-              </div>
-            ) : loadingCosts ? (
-              <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-            ) : entityCosts.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">
-                <p className="text-sm">No costs recorded for this entity yet</p>
-                <Button size="sm" variant="outline" className="mt-3 gap-1" onClick={() => setAddOpen(true)}>
-                  <Plus className="h-3.5 w-3.5" /> Add first cost
-                </Button>
-              </div>
-            ) : (
-              <>
-                {/* Category summary */}
-                {(() => {
-                  const byCat: Record<string, number> = {};
-                  entityCosts.forEach(c => { byCat[c.category] = (byCat[c.category] || 0) + c.amount_usd; });
-                  return Object.keys(byCat).length > 1 ? (
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {Object.entries(byCat).map(([cat, total]) => (
-                        <span key={cat} className="text-xs bg-muted rounded-full px-2.5 py-1 font-medium">
-                          {cat}: {fmt(total)}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
-
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Source</TableHead>
-                      <TableHead className="text-right">USD</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entityCosts.map(cost => (
-                      <TableRow key={cost.id} data-testid={`cost-row-${cost.id}`}>
-                        <TableCell className="text-sm whitespace-nowrap">{fmtDate(cost.cost_date)}</TableCell>
-                        <TableCell className="text-sm max-w-[180px] truncate">{cost.description}</TableCell>
-                        <TableCell>
-                          <span className="text-xs capitalize text-muted-foreground">{cost.category}</span>
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {cost.currency !== "USD" ? (
-                            <span className="text-muted-foreground text-xs">
-                              {fmtSrc(cost.amount, cost.currency)}
-                              <span className="block text-xs opacity-60">@ {cost.fx_rate_to_usd}</span>
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-medium text-sm">{fmt(cost.amount_usd)}</TableCell>
-                        <TableCell>
-                          {cost.status === "accrued" ? (
-                            <button
-                              className="text-xs text-amber-600 hover:underline"
-                              onClick={() => markPaidMutation.mutate({
-                                id: cost.id,
-                                paidDate: new Date().toISOString().slice(0, 10),
-                              })}
-                              data-testid={`mark-paid-cost-${cost.id}`}
-                            >
-                              Mark paid
-                            </button>
-                          ) : statusBadge(cost.status)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-
-                {/* Entity total */}
-                <div className="mt-3 pt-3 border-t flex justify-between text-sm font-semibold">
-                  <span>Total ({filterCategory === "all" ? "all categories" : filterCategory})</span>
-                  <span>{fmt(entityCosts.reduce((s, c) => s + c.amount_usd, 0))}</span>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Cross-entity cost summary table */}
-      {summary.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Cost Summary by Entity &amp; Category (USD)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Entity</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Total USD</TableHead>
-                  <TableHead className="text-right">Accrued</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead>FX Currencies</TableHead>
-                  <TableHead className="text-right">Count</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary
-                  .filter(r => entities.find(e => e.id === r.entity_id)?.entity_type !== "holding_uk")
-                  .map((row, idx) => {
-                    const meta = ENTITY_TYPE_META[row.entity_type] || { label: row.entity_type, color: "bg-gray-100 text-gray-600" };
-                    return (
-                      <TableRow key={idx} data-testid={`summary-row-${row.entity_id}-${row.category}`}>
-                        <TableCell className="text-sm font-medium">{row.entity_name}</TableCell>
-                        <TableCell><Badge className={`${meta.color} border-0 text-xs`}>{meta.label}</Badge></TableCell>
-                        <TableCell className="text-sm capitalize text-muted-foreground">{row.category}</TableCell>
-                        <TableCell className="text-right text-sm font-semibold">{fmt(row.total_usd)}</TableCell>
-                        <TableCell className="text-right text-sm text-amber-600">{fmt(row.accrued_usd)}</TableCell>
-                        <TableCell className="text-right text-sm text-green-600">{fmt(row.paid_usd)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.foreign_currencies?.length ? row.foreign_currencies.join(", ") : "—"}
-                        </TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">{row.transaction_count}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
