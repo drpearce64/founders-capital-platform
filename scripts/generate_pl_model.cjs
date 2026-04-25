@@ -1103,6 +1103,149 @@ async function main() {
     XLSX.utils.book_append_sheet(wb, ws, "Capital Accounts");
   }
 
+  // ── SHEET 8: Accounts Payable ─────────────────────────────────────────────
+  {
+    // Fetch all non-void invoices
+    const invoices = await fetchAll("invoices",
+      "id,vendor,invoice_number,description,invoice_date,due_date,amount,currency,series_tag,status,paid_date,payment_reference"
+    );
+
+    const COLS_AP = [{ wch: 3 }, { wch: 22 }, { wch: 14 }, { wch: 28 }, { wch: 13 }, { wch: 13 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 3 }];
+
+    const rows = [];
+
+    // Title
+    rows.push(["", cell("Accounts Payable", { fill: C.COBALT_DARK, font: font({ bold: true, sz: 13, color: C.WHITE }), align: align("left") }), ...Array(8).fill(cell("", { fill: C.COBALT_DARK })), ""]);
+    rows.push(["", cell(`Founders Capital Platform LLC — Delaware Series · Generated ${now}`, { font: font({ italic: true, sz: 8, color: C.MID_GREY }), align: align("left") }), "", "", "", "", "", "", "", "", ""]);
+    rows.push(Array(11).fill(""));
+
+    // ── KPI summary row ──
+    const unpaidTotal   = invoices.filter(i => i.status === "unpaid" ).reduce((s, i) => s + Number(i.amount || 0), 0);
+    const overdueTotal  = invoices.filter(i => i.status === "overdue").reduce((s, i) => s + Number(i.amount || 0), 0);
+    const paidTotal     = invoices.filter(i => i.status === "paid"   ).reduce((s, i) => s + Number(i.amount || 0), 0);
+
+    rows.push(["",
+      cell("SUMMARY", { fill: C.COBALT, font: font({ bold: true, color: C.WHITE }), align: align("left") }),
+      cell("", { fill: C.COBALT }),
+      cell("", { fill: C.COBALT }),
+      cell("Unpaid", { fill: C.COBALT, font: font({ bold: true, color: C.WHITE }), align: align("center") }),
+      cell("Overdue", { fill: C.COBALT, font: font({ bold: true, color: C.WHITE }), align: align("center") }),
+      cell("Paid", { fill: C.COBALT, font: font({ bold: true, color: C.WHITE }), align: align("center") }),
+      cell("", { fill: C.COBALT }), cell("", { fill: C.COBALT }), cell("", { fill: C.COBALT }),
+      "",
+    ]);
+    rows.push(["",
+      cell("All Entities", { fill: C.GOLD, font: font({ bold: true, color: C.DARK_BROWN }), align: align("left") }),
+      cell("", { fill: C.GOLD }),
+      cell("", { fill: C.GOLD }),
+      cell(unpaidTotal,  { fill: C.GOLD, font: font({ bold: true, color: C.RED_NEG }), align: align("right"), numFmt: USD_FMT }),
+      cell(overdueTotal, { fill: C.GOLD, font: font({ bold: true, color: C.RED_NEG }), align: align("right"), numFmt: USD_FMT }),
+      cell(paidTotal,    { fill: C.GOLD, font: font({ bold: true, color: C.GREEN_POS }), align: align("right"), numFmt: USD_FMT }),
+      cell("", { fill: C.GOLD }), cell("", { fill: C.GOLD }), cell("", { fill: C.GOLD }),
+      "",
+    ]);
+    rows.push(Array(11).fill(""));
+
+    // ── Summary by series ──
+    const seriesOrder = ["PLATFORM", "VECTOR-I", "VECTOR-III", "VECTOR-IV"];
+    const seriesLabel = (tag) => {
+      const m = { "PLATFORM": "FC Platform", "VECTOR-I": "Vector I (Shield AI)", "VECTOR-III": "Vector III (Reach Power)", "VECTOR-IV": "Vector IV (Project Prometheus)" };
+      return m[tag] || tag;
+    };
+
+    rows.push(["",
+      cell("SERIES", { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("left") }),
+      cell("TOTAL", { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+      cell("", { fill: C.HEADER }),
+      cell("UNPAID", { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+      cell("OVERDUE", { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+      cell("PAID", { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+      cell("COUNT", { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+      cell("", { fill: C.HEADER }), cell("", { fill: C.HEADER }),
+      "",
+    ]);
+
+    // Collect unique series tags, ordered
+    const allTags = [...new Set([...seriesOrder, ...invoices.map(i => i.series_tag || "PLATFORM")])];
+    allTags.forEach((tag, idx) => {
+      const tagInvoices = invoices.filter(i => (i.series_tag || "PLATFORM") === tag && i.status !== "void");
+      if (tagInvoices.length === 0) return;
+      const rowBg = idx % 2 === 0 ? C.ROW_EVEN : C.ROW_ODD;
+      rows.push(["",
+        cell(seriesLabel(tag), { fill: rowBg, font: font({ color: C.DARK_BROWN }), align: align("left") }),
+        cell(tagInvoices.reduce((s, i) => s + Number(i.amount || 0), 0), { fill: rowBg, font: font({ bold: true, color: C.COBALT_DARK }), align: align("right"), numFmt: USD_FMT }),
+        cell("", { fill: rowBg }),
+        cell(tagInvoices.filter(i => i.status === "unpaid" ).reduce((s, i) => s + Number(i.amount || 0), 0), { fill: rowBg, font: font({ color: C.RED_NEG }), align: align("right"), numFmt: USD_FMT }),
+        cell(tagInvoices.filter(i => i.status === "overdue").reduce((s, i) => s + Number(i.amount || 0), 0), { fill: rowBg, font: font({ color: C.RED_NEG }), align: align("right"), numFmt: USD_FMT }),
+        cell(tagInvoices.filter(i => i.status === "paid"   ).reduce((s, i) => s + Number(i.amount || 0), 0), { fill: rowBg, font: font({ color: C.GREEN_POS }), align: align("right"), numFmt: USD_FMT }),
+        cell(tagInvoices.length, { fill: rowBg, font: font({ color: C.MID_GREY }), align: align("right") }),
+        cell("", { fill: rowBg }), cell("", { fill: rowBg }),
+        "",
+      ]);
+    });
+
+    rows.push(Array(11).fill(""));
+
+    // ── Invoice detail table ──
+    rows.push(["",
+      cell("INVOICE DETAIL", { fill: C.COBALT, font: font({ bold: true, color: C.WHITE }), align: align("left") }),
+      ...Array(8).fill(cell("", { fill: C.COBALT })),
+      "",
+    ]);
+    rows.push(["",
+      cell("Vendor",        { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("left") }),
+      cell("Invoice #",     { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("center") }),
+      cell("Description",  { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("left") }),
+      cell("Invoice Date", { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("center") }),
+      cell("Due Date",     { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("center") }),
+      cell("Amount",       { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("right") }),
+      cell("CCY",          { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("center") }),
+      cell("Status",       { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("center") }),
+      cell("Series",       { fill: C.HEADER, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("left") }),
+      "",
+    ]);
+
+    const statusColor = { unpaid: C.GOLD, paid: C.GREEN_POS, overdue: C.RED_NEG, draft: C.MID_GREY, void: C.MID_GREY };
+
+    const sortedInvoices = [...invoices]
+      .filter(i => i.status !== "void")
+      .sort((a, b) => {
+        const order = { overdue: 0, unpaid: 1, draft: 2, paid: 3 };
+        return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+      });
+
+    sortedInvoices.forEach((inv, idx) => {
+      const rowBg = idx % 2 === 0 ? C.ROW_EVEN : C.ROW_ODD;
+      const amtColor = inv.status === "paid" ? C.GREEN_POS : (inv.status === "overdue" ? C.RED_NEG : C.DARK_BROWN);
+      rows.push(["",
+        cell(inv.vendor || "", { fill: rowBg, font: font({ color: C.DARK_BROWN }), align: align("left") }),
+        cell(inv.invoice_number || "", { fill: rowBg, font: font({ color: C.MID_GREY, sz: 8 }), align: align("center") }),
+        cell((inv.description || "").slice(0, 60), { fill: rowBg, font: font({ color: C.MID_GREY, sz: 8 }), align: align("left") }),
+        cell(inv.invoice_date || "", { fill: rowBg, font: font({ color: C.DARK_BROWN, sz: 8 }), align: align("center") }),
+        cell(inv.due_date || "",     { fill: rowBg, font: font({ color: inv.status === "overdue" ? C.RED_NEG : C.DARK_BROWN, sz: 8 }), align: align("center") }),
+        cell(Number(inv.amount || 0), { fill: rowBg, font: font({ bold: true, color: amtColor }), align: align("right"), numFmt: USD_FMT }),
+        cell(inv.currency || "USD",  { fill: rowBg, font: font({ color: C.MID_GREY, sz: 8 }), align: align("center") }),
+        cell(inv.status.toUpperCase(), { fill: rowBg, font: font({ bold: true, color: statusColor[inv.status] || C.MID_GREY, sz: 8 }), align: align("center") }),
+        cell(seriesLabel(inv.series_tag || "PLATFORM"), { fill: rowBg, font: font({ color: C.COBALT_DARK, sz: 8 }), align: align("left") }),
+        "",
+      ]);
+    });
+
+    if (sortedInvoices.length === 0) {
+      rows.push(["", cell("No invoices recorded yet.", { font: font({ italic: true, sz: 9, color: C.MID_GREY }), align: align("left") }), "", "", "", "", "", "", "", "", ""]);
+    }
+
+    rows.push(Array(11).fill(""));
+    rows.push(["",
+      cell(`Source: invoices table · Supabase · ${now}`,
+        { font: font({ italic: true, sz: 8, color: C.MID_GREY }), align: align("left") }),
+      "", "", "", "", "", "", "", "", "",
+    ]);
+
+    const ws = makeSheet(rows, [], COLS_AP);
+    XLSX.utils.book_append_sheet(wb, ws, "Accounts Payable");
+  }
+
   // ── WRITE ──────────────────────────────────────────────────────────────────
   XLSX.writeFile(wb, OUT_PATH);
   console.log(`[PLGen] Written → ${OUT_PATH}`);

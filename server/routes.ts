@@ -1541,5 +1541,115 @@ Founders Capital`;
     }
   });
 
+  // ── Accounts Payable — Invoices ──────────────────────────────────────────────
+
+  // GET /api/invoices — list all invoices with optional filters
+  app.get("/api/invoices", async (req, res) => {
+    let query = supabase
+      .from("invoices")
+      .select("*")
+      .order("invoice_date", { ascending: false });
+
+    if (req.query.status && req.query.status !== "all") {
+      query = query.eq("status", req.query.status as string);
+    }
+    if (req.query.series_tag && req.query.series_tag !== "all") {
+      query = query.eq("series_tag", req.query.series_tag as string);
+    }
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // POST /api/invoices — create a new invoice manually
+  app.post("/api/invoices", async (req, res) => {
+    const allowed = [
+      "vendor", "description", "invoice_number", "invoice_date", "due_date",
+      "amount", "currency", "entity_id", "series_tag", "status",
+      "notes", "payment_reference",
+    ];
+    const payload: Record<string, any> = {};
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) payload[k] = req.body[k];
+    }
+    if (!payload.vendor) return res.status(400).json({ error: "vendor is required" });
+    if (payload.amount === undefined) return res.status(400).json({ error: "amount is required" });
+
+    // If series_tag supplied but no entity_id, look up entity
+    if (payload.series_tag && !payload.entity_id) {
+      const tagMap: Record<string, string> = {
+        "VECTOR-III": "FC-VECTOR-III",
+        "VECTOR-IV":  "FC-VECTOR-IV",
+        "VECTOR-I":   "FC-VECTOR-I",
+        "PLATFORM":   "FC-PLATFORM",
+      };
+      const shortCode = tagMap[payload.series_tag];
+      if (shortCode) {
+        const { data: ent } = await supabase
+          .from("entities")
+          .select("id")
+          .eq("short_code", shortCode)
+          .single();
+        if (ent) payload.entity_id = ent.id;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from("invoices")
+      .insert(payload)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    await audit("invoices", data.id, "create",
+      `Invoice created: ${data.vendor} ${data.amount} ${data.currency}`);
+    res.json(data);
+  });
+
+  // PATCH /api/invoices/:id — update invoice (mark paid, update status, etc.)
+  app.patch("/api/invoices/:id", async (req, res) => {
+    const allowed = [
+      "status", "paid_date", "payment_reference", "due_date",
+      "notes", "series_tag", "vendor", "amount", "description",
+    ];
+    const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) payload[k] = req.body[k];
+    }
+
+    const { data, error } = await supabase
+      .from("invoices")
+      .update(payload)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Invoice not found" });
+
+    await audit("invoices", req.params.id, "update",
+      `Invoice updated: ${data.vendor} → status: ${payload.status || data.status}`);
+    res.json(data);
+  });
+
+  // GET /api/ap/summary — AP totals grouped by series (from view)
+  app.get("/api/ap/summary", async (_req, res) => {
+    const { data, error } = await supabase
+      .from("ap_summary_by_series")
+      .select("*");
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // GET /api/ap/aging — aging breakdown (from view)
+  app.get("/api/ap/aging", async (_req, res) => {
+    const { data, error } = await supabase
+      .from("ap_aging")
+      .select("*")
+      .order("days_overdue", { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
   return httpServer;
 }
