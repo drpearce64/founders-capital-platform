@@ -71,16 +71,22 @@ function isCaymanPath(path: string) {
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
 
-  // Auto-detect jurisdiction from current route
-  const [jurisdiction, setJurisdiction] = useState<Jurisdiction>(
-    isCaymanPath(location) ? "cayman" : "delaware"
-  );
+  // Derive jurisdiction purely from the current route — no extra state needed
+  const jurisdiction: Jurisdiction = isCaymanPath(location) ? "cayman" : "delaware";
 
-  const nav     = jurisdiction === "delaware" ? delawareNav    : caymanNav;
-  const sections = jurisdiction === "delaware" ? delawareSections : caymanSections;
-  const jInfo   = JURISDICTIONS[jurisdiction];
+  function switchJurisdiction(j: Jurisdiction) {
+    if (j === "cayman" && !isCaymanPath(location)) {
+      navigate("/cayman");
+    } else if (j === "delaware" && isCaymanPath(location)) {
+      navigate("/");
+    }
+  }
+
+  const nav      = jurisdiction === "delaware" ? delawareNav       : caymanNav;
+  const sections = jurisdiction === "delaware" ? delawareSections  : caymanSections;
+  const jInfo    = JURISDICTIONS[jurisdiction];
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "hsl(var(--background))" }}>
@@ -138,7 +144,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <button
                     key={key}
                     data-testid={`jurisdiction-${key}`}
-                    onClick={() => setJurisdiction(key)}
+                    onClick={() => switchJurisdiction(key)}
                     className="flex-1 flex flex-col items-center gap-0.5 py-2 px-1 text-xs font-medium transition-colors"
                     style={{
                       background:  active ? "hsl(231 70% 54% / 0.22)" : "hsl(0 0% 100% / 0.04)",
