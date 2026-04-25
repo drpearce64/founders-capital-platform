@@ -478,16 +478,27 @@ Founders Capital`;
   // ── Dashboard Summary ──────────────────────────────────────────────────────
 
   app.get("/api/dashboard", async (_req, res) => {
+    // Delaware-only: exclude Cayman Islands jurisdiction from all aggregates
+    const delawareEntityIds = await supabase
+      .from("entities")
+      .select("id")
+      .eq("jurisdiction", "Delaware");
+    const delawareIds = (delawareEntityIds.data || []).map((e: any) => e.id);
+
     const [entitiesRes, commitmentsRes, investmentsRes, callsRes] = await Promise.all([
-      supabase.from("entities").select("*, investments(company_name, status)").is("archived_at", null),
-      supabase.from("investor_commitments").select("committed_amount, called_amount, status, entity_id").is("archived_at", null),
-      supabase.from("investments").select("cost_basis, current_fair_value, company_name, entity_id, status, entities(short_code)").is("archived_at", null),
-      supabase.from("capital_calls").select("total_call_amount, status, entity_id"),
+      supabase.from("entities").select("*, investments(company_name, status)")
+        .eq("jurisdiction", "Delaware").is("archived_at", null),
+      supabase.from("investor_commitments").select("committed_amount, called_amount, status, entity_id")
+        .in("entity_id", delawareIds).is("archived_at", null),
+      supabase.from("investments").select("cost_basis, current_fair_value, company_name, entity_id, status, entities(short_code, jurisdiction)")
+        .in("entity_id", delawareIds).is("archived_at", null),
+      supabase.from("capital_calls").select("total_call_amount, status, entity_id")
+        .in("entity_id", delawareIds),
     ]);
 
     if (entitiesRes.error) return res.status(500).json({ error: entitiesRes.error.message });
 
-    const spvs = (entitiesRes.data || []).filter(e => e.entity_type === 'series_spv');
+    const spvs = (entitiesRes.data || []).filter((e: any) => e.entity_type === 'series_spv');
     const commitments = commitmentsRes.data || [];
     const investments = investmentsRes.data || [];
 
