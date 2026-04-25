@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import Layout from "./components/Layout";
+
+// Delaware pages
 import Dashboard from "./pages/Dashboard";
 import SPVs from "./pages/SPVs";
 import LPOnboarding from "./pages/LPOnboarding";
@@ -22,6 +24,15 @@ import PLModel from "./pages/PLModel";
 import TaxAccounts from "./pages/TaxAccounts";
 import AccountsPayable from "./pages/AccountsPayable";
 import GroupStructure from "./pages/GroupStructure";
+
+// Cayman pages
+import CaymanDashboard from "./pages/CaymanDashboard";
+import CaymanFundOverview from "./pages/CaymanFundOverview";
+import CaymanLPRegister from "./pages/CaymanLPRegister";
+import CaymanCapitalCalls from "./pages/CaymanCapitalCalls";
+import CaymanNAV from "./pages/CaymanNAV";
+import CaymanAccountsPayable from "./pages/CaymanAccountsPayable";
+
 import NotFound from "./pages/not-found";
 
 export default function App() {
@@ -30,24 +41,34 @@ export default function App() {
       <Router hook={useHashLocation}>
         <Layout>
           <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/spvs" component={SPVs} />
-            <Route path="/lp-onboarding" component={LPOnboarding} />
-            <Route path="/lp-register" component={LPRegister} />
-            <Route path="/capital-calls" component={CapitalCalls} />
-            <Route path="/waterfall" component={Waterfall} />
-            <Route path="/audit-log" component={AuditLog} />
-            <Route path="/series-expenses" component={SeriesExpenses} />
-            <Route path="/lp-portfolio" component={LPPortfolio} />
-            <Route path="/nav-marks" component={NAVMarks} />
-            <Route path="/documents" component={Documents} />
-            <Route path="/settings" component={Settings} />
-            <Route path="/statements" component={QuarterlyStatements} />
-            <Route path="/airtable-sync" component={AirtableSync} />
-            <Route path="/pl-model" component={PLModel} />
-            <Route path="/tax-accounts" component={TaxAccounts} />
-            <Route path="/accounts-payable" component={AccountsPayable} />
-            <Route path="/group-structure" component={GroupStructure} />
+            {/* ── Delaware routes ─────────────────────────────── */}
+            <Route path="/"                  component={Dashboard} />
+            <Route path="/spvs"              component={SPVs} />
+            <Route path="/lp-onboarding"     component={LPOnboarding} />
+            <Route path="/lp-register"       component={LPRegister} />
+            <Route path="/capital-calls"     component={CapitalCalls} />
+            <Route path="/waterfall"         component={Waterfall} />
+            <Route path="/audit-log"         component={AuditLog} />
+            <Route path="/series-expenses"   component={SeriesExpenses} />
+            <Route path="/lp-portfolio"      component={LPPortfolio} />
+            <Route path="/nav-marks"         component={NAVMarks} />
+            <Route path="/documents"         component={Documents} />
+            <Route path="/settings"          component={Settings} />
+            <Route path="/statements"        component={QuarterlyStatements} />
+            <Route path="/airtable-sync"     component={AirtableSync} />
+            <Route path="/pl-model"          component={PLModel} />
+            <Route path="/tax-accounts"      component={TaxAccounts} />
+            <Route path="/accounts-payable"  component={AccountsPayable} />
+            <Route path="/group-structure"   component={GroupStructure} />
+
+            {/* ── Cayman routes ───────────────────────────────── */}
+            <Route path="/cayman"                    component={CaymanDashboard} />
+            <Route path="/cayman/fund-overview"      component={CaymanFundOverview} />
+            <Route path="/cayman/lp-register"        component={CaymanLPRegister} />
+            <Route path="/cayman/capital-calls"      component={CaymanCapitalCalls} />
+            <Route path="/cayman/nav"                component={CaymanNAV} />
+            <Route path="/cayman/accounts-payable"   component={CaymanAccountsPayable} />
+
             <Route component={NotFound} />
           </Switch>
         </Layout>
