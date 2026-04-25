@@ -1108,8 +1108,8 @@ async function main() {
   // ── SHEET 8: Accounts Payable ─────────────────────────────────────────────
   {
     // Fetch all non-void invoices
-    const invoices = await fetchAll("invoices",
-      "id,vendor,invoice_number,description,invoice_date,due_date,amount,currency,series_tag,status,paid_date,payment_reference"
+    const invoices = await supabaseFetch("invoices",
+      "id,vendor,invoice_number,description,invoice_date,due_date,amount,currency,fx_rate_to_usd,amount_usd,series_tag,status,paid_date,payment_reference"
     );
 
     const COLS_AP = [{ wch: 3 }, { wch: 22 }, { wch: 14 }, { wch: 28 }, { wch: 13 }, { wch: 13 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 3 }];
