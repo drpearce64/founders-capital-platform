@@ -1,6 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "node:fs/promises";
+import { rm, readFile, mkdir, copyFile } from "node:fs/promises";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -59,7 +59,16 @@ async function buildAll() {
   });
 }
 
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function copyScripts() {
+  // Copy plain-JS scripts into dist/scripts/ so fork() can find them at runtime
+  await mkdir("dist/scripts", { recursive: true });
+  await copyFile("scripts/airtable_sync.js", "dist/scripts/airtable_sync.js");
+  console.log("scripts copied to dist/scripts/");
+}
+
+buildAll()
+  .then(() => copyScripts())
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

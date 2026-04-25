@@ -3,7 +3,7 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { execFile } from "child_process";
+import { execFile, fork } from "child_process";
 import { promisify } from "util";
 import os from "os";
 import supabase from "./supabase";
@@ -1172,6 +1172,77 @@ Founders Capital`;
       lp_count: commitments.length,
       lp_items: lpItems,
     });
+  });
+
+  // ── Airtable Sync ─────────────────────────────────────────────────────────
+
+  // POST /api/sync/airtable  — trigger a full sync (called by Railway cron or manually)
+  app.post("/api/sync/airtable", async (req, res) => {
+    // Validate optional bearer token if SYNC_SECRET is set
+    const secret = process.env.SYNC_SECRET;
+    if (secret) {
+      const auth = req.headers.authorization ?? "";
+      if (auth !== `Bearer ${secret}`) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    }
+
+    // In dev: __dirname = server/, script at ../scripts/airtable_sync.js
+    // In prod: __dirname = dist/,   script at scripts/airtable_sync.js (copied by build)
+    const scriptPath = path.join(__dirname, "scripts", "airtable_sync.js");
+    const child = fork(scriptPath, [], {
+      env: {
+        ...process.env,
+        AIRTABLE_PAT:     process.env.AIRTABLE_PAT     ?? "",
+        AIRTABLE_BASE_ID: process.env.AIRTABLE_BASE_ID ?? "appXSAE1n2PvdCQB1",
+        SUPABASE_URL:     process.env.SUPABASE_URL     ?? "",
+        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ?? "",
+      },
+      detached: false,
+      silent: true,
+    });
+
+    let output = "";
+    child.stdout?.on("data", (d: Buffer) => { output += d.toString(); });
+    child.stderr?.on("data", (d: Buffer) => { output += d.toString(); });
+
+    child.on("close", async (code) => {
+      await supabase.from("audit_log").insert({
+        table_name:  "airtable_sync",
+        record_id:   null,
+        action:      "create",
+        description: `Airtable sync finished with exit code ${code}`,
+        actor:       "system",
+        new_values:  { exit_code: code, output: output.slice(-2000) },
+      });
+    });
+
+    res.json({ status: "sync_started", message: "Airtable sync running in background" });
+  });
+
+  // GET /api/sync/airtable/log  — recent sync log entries
+  app.get("/api/sync/airtable/log", async (req, res) => {
+    const limit = Number(req.query.limit) || 50;
+    const { data, error } = await supabase
+      .from("airtable_sync_log")
+      .select("*")
+      .order("synced_at", { ascending: false })
+      .limit(limit);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // GET /api/sync/airtable/status  — last summary row
+  app.get("/api/sync/airtable/status", async (_req, res) => {
+    const { data, error } = await supabase
+      .from("airtable_sync_log")
+      .select("*")
+      .eq("action", "sync_complete")
+      .order("synced_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data ?? { status: "no_sync_yet" });
   });
 
   return httpServer;
