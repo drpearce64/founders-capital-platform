@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield,
   Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw,
   PieChart, FileSpreadsheet, BookOpen, FileCheck, Network, Globe, Landmark,
-  ChevronRight, CalendarDays,
+  ChevronRight, CalendarDays, Rocket,
 } from "lucide-react";
 
 // ── Delaware nav ──────────────────────────────────────────────────────────────
@@ -20,6 +20,7 @@ const delawareNav = [
   { href: "/nav-marks",       label: "NAV / Fair Value",       icon: BarChart3,       section: "finance" },
   { href: "/tax-accounts",    label: "Tax & Capital Accounts", icon: BookOpen,        section: "finance" },
   { href: "/accounts-payable",label: "Accounts Payable",       icon: FileCheck,       section: "finance" },
+  { href: "/yc-portfolio",    label: "YC Portfolio",           icon: Rocket,          section: "portfolio" },
   { href: "/group-structure", label: "Group Structure",        icon: Network,         section: "group" },
   { href: "/statements",      label: "Statements",             icon: FileText,        section: "reporting" },
   { href: "/airtable-sync",   label: "Airtable Sync",          icon: RefreshCw,       section: "reporting" },
@@ -31,12 +32,13 @@ const delawareNav = [
 ];
 
 const delawareSections: Record<string, string> = {
-  overview:  "Overview",
-  investors: "Investors",
-  finance:   "Finance",
-  reporting: "Reporting",
-  admin:     "Administration",
-  group:     "Group",
+  overview:   "Overview",
+  investors:  "Investors",
+  finance:    "Finance",
+  portfolio:  "Portfolio",
+  reporting:  "Reporting",
+  admin:      "Administration",
+  group:      "Group",
 };
 
 // ── Cayman nav ────────────────────────────────────────────────────────────────
@@ -47,6 +49,7 @@ const caymanNav = [
   { href: "/cayman/capital-calls",   label: "Capital Calls",   icon: Phone,           section: "investors" },
   { href: "/cayman/nav",             label: "NAV / Fair Value", icon: BarChart3,      section: "finance" },
   { href: "/cayman/accounts-payable",label: "Accounts Payable", icon: FileCheck,      section: "finance" },
+  { href: "/yc-portfolio",             label: "YC Portfolio",    icon: Rocket,          section: "portfolio" },
   { href: "/group-structure",         label: "Group Structure", icon: Network,         section: "group" },
   { href: "/statements",             label: "Statements",         icon: FileText,     section: "reporting" },
   { href: "/reporting-calendar",     label: "Reporting Calendar",  icon: CalendarDays, section: "reporting" },
@@ -55,12 +58,13 @@ const caymanNav = [
 ];
 
 const caymanSections: Record<string, string> = {
-  overview:  "Overview",
-  investors: "Investors",
-  finance:   "Finance",
-  group:     "Group",
-  reporting: "Reporting",
-  admin:     "Administration",
+  overview:   "Overview",
+  investors:  "Investors",
+  finance:    "Finance",
+  portfolio:  "Portfolio",
+  group:      "Group",
+  reporting:  "Reporting",
+  admin:      "Administration",
 };
 
 // ── Jurisdiction config ───────────────────────────────────────────────────────

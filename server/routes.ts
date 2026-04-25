@@ -1747,5 +1747,110 @@ Founders Capital`;
     res.json(data);
   });
 
+
+  // ── YC Portfolio ──────────────────────────────────────────────────────────────
+  // GET /api/yc-deals — fetch live YC portfolio deals from Airtable
+  app.get("/api/yc-deals", async (_req, res) => {
+    const pat    = process.env.AIRTABLE_PAT     ?? "";
+    const baseId = process.env.AIRTABLE_BASE_ID ?? "appXSAE1n2PvdCQB1";
+    const tableId = "tbln6AszmitsErPgh"; // Deals table
+
+    if (!pat) {
+      return res.status(500).json({ error: "AIRTABLE_PAT not configured" });
+    }
+
+    try {
+      const fields = [
+        "CompanyName", "Status", "Stage", "YC", "Share class",
+        "Investment Currency", "USD INVESTMENT VALUE", "Total Funds Committed",
+        "MOIC", "Live Market Value of Investment", "Live Market Value of Investment USD",
+        "Portfolio Appreciation ($)", "Closing Date", "Quarter closed", "Year",
+        "Company Description", "URL", "Deal Code", "Business Type", "Location",
+        "FC Investment Deal Currency (from Investments 2)",
+        "FC Investment PV USD",
+      ].map(f => `fields[]=${encodeURIComponent(f)}`).join("&");
+
+      // Only fetch closed YC deals (has "YC" in CompanyName)
+      const filterFormula = encodeURIComponent("FIND('YC', {CompanyName})");
+
+      let allRecords: any[] = [];
+      let offset: string | undefined;
+
+      do {
+        const offsetParam = offset ? `&offset=${offset}` : "";
+        const url = `https://api.airtable.com/v0/${baseId}/${tableId}?${fields}&filterByFormula=${filterFormula}${offsetParam}`;
+        const resp = await fetch(url, {
+          headers: { Authorization: `Bearer ${pat}` },
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          return res.status(resp.status).json({ error: `Airtable error: ${text}` });
+        }
+        const json = await resp.json() as { records: any[]; offset?: string };
+        allRecords = allRecords.concat(json.records ?? []);
+        offset = json.offset;
+      } while (offset);
+
+      // Transform records into clean deal objects
+      const deals = allRecords.map((r: any) => {
+        const f = r.fields ?? {};
+        const name: string = f["CompanyName"] ?? "";
+
+        // batch from YC field (array) or fallback to name
+        let batch = "";
+        const ycField = f["YC"];
+        if (Array.isArray(ycField) && ycField.length > 0) {
+          batch = ycField.join(", ");
+        } else if (typeof ycField === "string" && ycField) {
+          batch = ycField;
+        } else {
+          const m = name.match(/\(YC ([A-Z][0-9]+)\)/);
+          if (m) batch = m[1];
+        }
+
+        // FC own investment = sum of rollup array
+        let fcInvestment = 0;
+        const fcRollup = f["FC Investment Deal Currency (from Investments 2)"];
+        if (Array.isArray(fcRollup)) {
+          fcInvestment = fcRollup.reduce((s: number, v: number) => s + (v ?? 0), 0);
+        }
+
+        const currency = Array.isArray(f["Investment Currency"])
+          ? f["Investment Currency"][0]
+          : f["Investment Currency"] ?? "USD";
+
+        return {
+          id: r.id,
+          name,
+          status:              f["Status"]                             ?? "",
+          stage:               f["Stage"]                             ?? "",
+          batch,
+          instrument:          f["Share class"]                       ?? "",
+          currency,
+          fc_investment:       Math.round(fcInvestment * 100) / 100,
+          usd_investment_value: f["USD INVESTMENT VALUE"]             ?? 0,
+          total_funds_committed: f["Total Funds Committed"]           ?? 0,
+          moic:                f["MOIC"]                              ?? 1,
+          live_market_value_usd: f["Live Market Value of Investment USD"] ?? null,
+          portfolio_appreciation: f["Portfolio Appreciation ($)"]    ?? null,
+          closing_date:        f["Closing Date"]                      ?? "",
+          quarter:             f["Quarter closed"]                    ?? "",
+          year:                String(f["Year"] ?? ""),
+          description:         (f["Company Description"] ?? "").slice(0, 200),
+          url:                 f["URL"]                               ?? "",
+          deal_code:           f["Deal Code"]                         ?? "",
+          business_type:       Array.isArray(f["Business Type"])
+            ? f["Business Type"].join(", ")
+            : f["Business Type"] ?? "",
+          location:            f["Location"]                          ?? "",
+        };
+      });
+
+      res.json({ deals, total: deals.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   return httpServer;
 }

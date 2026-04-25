@@ -25,6 +25,7 @@ import TaxAccounts from "./pages/TaxAccounts";
 import AccountsPayable from "./pages/AccountsPayable";
 import GroupStructure from "./pages/GroupStructure";
 import ReportingCalendar from "./pages/ReportingCalendar";
+import YCDashboard from "./pages/YCDashboard";
 
 // Cayman pages
 import CaymanDashboard from "./pages/CaymanDashboard";
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/accounts-payable"  component={AccountsPayable} />
             <Route path="/group-structure"      component={GroupStructure} />
             <Route path="/reporting-calendar"   component={ReportingCalendar} />
+            <Route path="/yc-portfolio"          component={YCDashboard} />
 
             {/* ── Cayman routes ───────────────────────────────── */}
             <Route path="/cayman"                    component={CaymanDashboard} />
