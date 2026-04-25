@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import Layout from "@/components/Layout";
 import {
   TrendingUp, DollarSign, Building2, ExternalLink, Layers,
 } from "lucide-react";
@@ -199,7 +198,7 @@ export default function YCDashboard() {
   const activeBatchInfo = batchFilter !== "all" ? BATCH_LABELS[batchFilter] : null;
 
   return (
-    <Layout>
+    <>
       {isLoading ? (
         <div className="p-8 flex items-center justify-center h-full">
           <div className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -556,6 +555,6 @@ export default function YCDashboard() {
         </div>
       </div>
       )}
-    </Layout>
+    </>
   );
 }
