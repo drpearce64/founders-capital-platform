@@ -196,34 +196,23 @@ export default function YCDashboard() {
     return <span className="ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>;
   }
 
-  if (isLoading) {
-    return (
-      <Layout>
+  const activeBatchInfo = batchFilter !== "all" ? BATCH_LABELS[batchFilter] : null;
+
+  return (
+    <Layout>
+      {isLoading ? (
         <div className="p-8 flex items-center justify-center h-full">
           <div className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
             Loading YC portfolio from Airtable…
           </div>
         </div>
-      </Layout>
-    );
-  }
-
-  if (error) {
-    return (
-      <Layout>
+      ) : error ? (
         <div className="p-8">
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             Failed to load YC deals: {String(error)}
           </div>
         </div>
-      </Layout>
-    );
-  }
-
-  const activeBatchInfo = batchFilter !== "all" ? BATCH_LABELS[batchFilter] : null;
-
-  return (
-    <Layout>
+      ) : (
       <div className="flex flex-col h-full overflow-hidden">
 
         {/* ── Page header ───────────────────────────────────────────────── */}
@@ -566,6 +555,7 @@ export default function YCDashboard() {
           </div>
         </div>
       </div>
+      )}
     </Layout>
   );
 }
