@@ -403,6 +403,92 @@ def build_statement(data: dict, output_path: str):
             ]))
             story.append(exp_tbl)
 
+        # Capital account movement (K-1 basis)
+        cap_acct = pos.get("capital_account", {})
+        if cap_acct:
+            story.append(Spacer(1, 3*mm))
+            story.append(Paragraph("Capital Account Movement", s_h3))
+            story.append(Spacer(1, 1*mm))
+
+            tax_year      = cap_acct.get("tax_year", "")
+            opening_bal   = cap_acct.get("opening_balance")
+            contributions = float(cap_acct.get("total_contributions") or 0)
+            fees          = float(cap_acct.get("total_fees") or 0)
+            gain_alloc    = float(cap_acct.get("total_gain_allocations") or 0)
+            carry_alloc   = float(cap_acct.get("total_carry_allocations") or 0)
+            distributions = float(cap_acct.get("total_distributions") or 0)
+            closing_bal   = float(cap_acct.get("closing_balance") or 0)
+
+            def ca_row(label, value, color=None, bold=False, note=""):
+                style_r = S("car", alignment=TA_RIGHT, fontSize=9,
+                              fontName="Helvetica-Bold" if bold else "Helvetica",
+                              textColor=color or FC_TEXT)
+                return [
+                    Paragraph(label, s_bold if bold else s_body),
+                    Paragraph(fmt_usd(value), style_r),
+                    Paragraph(note, s_muted),
+                ]
+
+            ca_move_rows = [
+                [Paragraph(f"<b>{h}</b>", S("cmth", fontName="Helvetica-Bold", fontSize=8.5,
+                            textColor=FC_WHITE, alignment=TA_CENTER))
+                 for h in ["Movement Item", "Amount ($)", "Notes"]],
+            ]
+            if opening_bal is not None:
+                yr_prev = str(int(tax_year) - 1) if str(tax_year).isdigit() else "—"
+                ca_move_rows.append(ca_row("Opening Balance (1 Jan)", float(opening_bal),
+                                           note=f"Prior year closing as at 31 Dec {yr_prev}"))
+            ca_move_rows.append(ca_row("(+) Capital Contributions", contributions,
+                                        color=FC_GREEN, note="Cash called from LP"))
+            if fees != 0:
+                ca_move_rows.append(ca_row("(-) Management / Deal Fees", fees,
+                                            color=FC_AMBER, note="6% deal fee deducted"))
+            if gain_alloc != 0:
+                ca_move_rows.append(ca_row(
+                    "(+/-) Allocated Gain / (Loss)", gain_alloc,
+                    color=FC_GREEN if gain_alloc >= 0 else colors.red,
+                    note="Pro-rata share of unrealised gain/(loss)",
+                ))
+            if carry_alloc != 0:
+                ca_move_rows.append(ca_row(
+                    "(-) GP Carry Allocation", carry_alloc,
+                    color=FC_AMBER, note="20% carried interest reserved for GP",
+                ))
+            if distributions != 0:
+                ca_move_rows.append(ca_row("(-) Distributions Received", distributions,
+                                            color=FC_GREEN, note="Cash returned to LP"))
+            ca_move_rows.append([
+                Paragraph("<b>Closing Balance (31 Dec)</b>", s_bold),
+                Paragraph(f"<b>{fmt_usd(closing_bal)}</b>",
+                          S("clr", alignment=TA_RIGHT, fontName="Helvetica-Bold", fontSize=10,
+                            textColor=FC_BLUE if closing_bal >= 0 else colors.red)),
+                Paragraph(f"Tax year {tax_year} — K-1 basis", s_muted),
+            ])
+
+            ca_move_col_w = [(W-2*MARGIN)*0.38, (W-2*MARGIN)*0.22, (W-2*MARGIN)*0.40]
+            ca_move_tbl = Table(ca_move_rows, colWidths=ca_move_col_w, repeatRows=1)
+            ca_move_tbl.setStyle(TableStyle([
+                ("BACKGROUND",    (0,0), (-1,0), FC_DARK),
+                ("BACKGROUND",    (0,-1), (-1,-1), FC_BLUE_LT),
+                ("ROWBACKGROUNDS",(0,1), (-1,-2), [FC_WHITE, FC_SURFACE]),
+                ("LINEABOVE",     (0,-1), (-1,-1), 1.5, FC_BLUE),
+                ("FONTSIZE",      (0,0), (-1,-1), 8.5),
+                ("TOPPADDING",    (0,0), (-1,-1), 5),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+                ("LEFTPADDING",   (0,0), (-1,-1), 7),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 7),
+                ("GRID",          (0,0), (-1,-1), 0.3, FC_BORDER),
+                ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ]))
+            story.append(ca_move_tbl)
+            story.append(Spacer(1, 2*mm))
+            story.append(Paragraph(
+                "This capital account summary is provided for informational purposes only and should "
+                "not be used for tax filing without reference to the official K-1 issued by the GP. "
+                "Figures are presented on a cash and fair-value basis.",
+                S("cadiscl", fontSize=7, textColor=FC_MUTED, leading=9.5)
+            ))
+
         story.append(Spacer(1, 8*mm))
 
     # ── Footer ────────────────────────────────────────────────────────────────

@@ -215,7 +215,7 @@ async function main() {
   console.log("[PLGen] Fetching data from Supabase…");
 
   // Fetch all tables in parallel
-  const [entities, investments, commitments, capitalCalls, navMarks, expenses] =
+  const [entities, investments, commitments, capitalCalls, navMarks, expenses, capAcctBalances] =
     await Promise.all([
       supabaseFetch("entities", "*", "archived_at=is.null&order=short_code"),
       supabaseFetch("investments", "*", "archived_at=is.null"),
@@ -223,9 +223,10 @@ async function main() {
       supabaseFetch("capital_calls", "*"),
       supabaseFetch("nav_marks", "*", "order=mark_date.desc"),
       supabaseFetch("series_expenses", "*"),
+      supabaseFetch("lp_capital_account_balances", "*", "order=entity_name,investor_name,tax_year"),
     ]);
 
-  console.log(`[PLGen] Fetched: ${entities.length} entities, ${investments.length} investments, ${commitments.length} commitments`);
+  console.log(`[PLGen] Fetched: ${entities.length} entities, ${investments.length} investments, ${commitments.length} commitments, ${capAcctBalances.length} capital account rows`);
 
   // ── BUILD VECTOR DATA ──────────────────────────────────────────────────────
   const seriesEntities = entities.filter(e => e.entity_type === "series_spv");
@@ -343,12 +344,13 @@ async function main() {
 
     // Contents
     const contents = [
-      ["Cover",          "This page — overview and navigation"],
-      ["Assumptions",    "Carry rate, fee structure, discount rates, macro"],
-      ["Vector III P&L", "Reach Power, Inc. — individual series P&L"],
-      ["Vector IV P&L",  "Project Prometheus — individual series P&L"],
-      ["Consolidated",   "All series aggregated — total fund view"],
-      ["GP Entity",      "Founders Capital Platform LLC — GP economics"],
+      ["Cover",             "This page — overview and navigation"],
+      ["Assumptions",       "Carry rate, fee structure, discount rates, macro"],
+      ["Vector III P&L",    "Reach Power, Inc. — individual series P&L"],
+      ["Vector IV P&L",     "Project Prometheus — individual series P&L"],
+      ["Consolidated",      "All series aggregated — total fund view"],
+      ["GP Entity",         "Founders Capital Platform LLC — GP economics"],
+      ["Capital Accounts",  "LP capital account ledger — contributions, fees, gain allocations (K-1 basis)"],
     ];
     contents.forEach(([tab, desc]) => {
       rows.push([
@@ -941,6 +943,164 @@ async function main() {
 
     const ws = makeSheet(rows, [], COLS);
     XLSX.utils.book_append_sheet(wb, ws, "GP Entity");
+  }
+
+  // ── SHEET 7: LP CAPITAL ACCOUNTS ──────────────────────────────────────────
+  {
+    const COLS = [3, 30, 28, 8, 16, 16, 16, 16, 16, 3];
+    const rows = [];
+    const bg   = (i) => i % 2 === 0 ? C.LIGHT_GREY : C.CREAM;
+
+    const banner = v2 => cell(v2, { fill: C.DARK_BROWN, font: font({ color: C.WHITE }) });
+    rows.push(["", banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), ""]);
+    rows.push([
+      "",
+      cell("LP CAPITAL ACCOUNTS  ·  TAX REPORTING VIEW", {
+        fill: C.DARK_BROWN, font: font({ bold: true, sz: 13, color: C.WHITE }), align: align("left"),
+      }),
+      banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), "",
+    ]);
+    rows.push([
+      "",
+      cell(`By LP & Vector  ·  All Tax Years  ·  As of ${now}`, {
+        fill: C.DARK_BROWN, font: font({ sz: 9, color: C.CREAM }), align: align("left"),
+      }),
+      banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), "",
+    ]);
+    rows.push(["", banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), banner(""), ""]);
+
+    // Column headers
+    rows.push([
+      "",
+      headerCell("Investor"),
+      headerCell("Vector / Series"),
+      headerCell("Tax Year"),
+      headerCell("Contributions ($)"),
+      headerCell("Fees ($)"),
+      headerCell("Gain Alloc ($)"),
+      headerCell("Carry Alloc ($)"),
+      headerCell("Closing Balance ($)"),
+      "",
+    ]);
+
+    if (!Array.isArray(capAcctBalances) || capAcctBalances.length === 0) {
+      // No data yet — show placeholder row
+      rows.push([
+        "",
+        cell("No capital account entries recorded yet.", {
+          font: font({ italic: true, color: C.MID_GREY }), align: align("left"),
+        }),
+        cell("Run the sync from the portal to populate.", {
+          font: font({ italic: true, color: C.MID_GREY }), align: align("left"),
+        }),
+        "", "", "", "", "", "", "",
+      ]);
+    } else {
+      // Group by investor for sub-totals
+      const byInvestor = {};
+      capAcctBalances.forEach(r => {
+        const key = r.investor_name || r.investor_id;
+        if (!byInvestor[key]) byInvestor[key] = [];
+        byInvestor[key].push(r);
+      });
+
+      let rowIdx = 0;
+      Object.entries(byInvestor).forEach(([investor, entries]) => {
+        // Investor section header
+        rows.push([
+          "",
+          cell(investor, {
+            fill: C.COBALT, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("left"),
+          }),
+          cell(`${entries.length} row(s)`, {
+            fill: C.COBALT, font: font({ color: C.WHITE, sz: 8 }), align: align("left"),
+          }),
+          ...Array(6).fill(cell("", { fill: C.COBALT })),
+          "",
+        ]);
+
+        let invTotal = { contributions: 0, fees: 0, gain: 0, carry: 0, closing: 0 };
+
+        entries.forEach((r, i) => {
+          const rowBg = bg(i);
+          const contributions = Number(r.total_contributions || 0);
+          const fees          = Number(r.total_fees || 0);
+          const gain          = Number(r.total_gain_allocations || 0);
+          const carry         = Number(r.total_carry_allocations || 0);
+          const closing       = Number(r.closing_balance || 0);
+
+          invTotal.contributions += contributions;
+          invTotal.fees          += fees;
+          invTotal.gain          += gain;
+          invTotal.carry         += carry;
+          invTotal.closing        = closing; // use last year's closing as total
+
+          const entityLabel = (r.entity_name || r.entity_id || "")
+            .replace("Founders Capital Platform", "FC")
+            .replace("FC-VECTOR-", "Vector ");
+
+          rows.push([
+            "",
+            cell("", { fill: rowBg }),  // investor col blank (merged conceptually)
+            cell(entityLabel, { fill: rowBg, font: font({ color: C.DARK_BROWN }), align: align("left") }),
+            cell(String(r.tax_year || "—"), { fill: rowBg, font: font({ color: C.DARK_BROWN }), align: align("center") }),
+            cell(contributions, { fill: rowBg, font: font({ color: C.GREEN_POS }), align: align("right"), numFmt: USD_FMT }),
+            cell(fees, { fill: rowBg, font: font({ color: fees < 0 ? C.RED_NEG : C.BLACK_FORM }), align: align("right"), numFmt: USD_FMT }),
+            cell(gain, { fill: rowBg, font: font({ color: gain >= 0 ? C.GREEN_POS : C.RED_NEG }), align: align("right"), numFmt: USD_FMT }),
+            cell(carry, { fill: rowBg, font: font({ color: carry < 0 ? C.RED_NEG : C.BLACK_FORM }), align: align("right"), numFmt: USD_FMT }),
+            cell(closing, { fill: rowBg, font: font({ bold: true, color: C.COBALT_DARK }), align: align("right"), numFmt: USD_FMT }),
+            "",
+          ]);
+          rowIdx++;
+        });
+
+        // Investor sub-total row
+        rows.push([
+          "",
+          totalCell(`${investor} — Total`),
+          cell("", { fill: C.GOLD }),
+          cell("", { fill: C.GOLD }),
+          totalCell(invTotal.contributions, USD_FMT),
+          totalCell(invTotal.fees, USD_FMT),
+          totalCell(invTotal.gain, USD_FMT),
+          totalCell(invTotal.carry, USD_FMT),
+          totalCell(invTotal.closing, USD_FMT),
+          "",
+        ]);
+        rows.push(["", "", "", "", "", "", "", "", "", ""]);
+      });
+
+      // Grand total
+      const grand = {
+        contributions: capAcctBalances.reduce((s, r) => s + Number(r.total_contributions || 0), 0),
+        fees:  capAcctBalances.reduce((s, r) => s + Number(r.total_fees || 0), 0),
+        gain:  capAcctBalances.reduce((s, r) => s + Number(r.total_gain_allocations || 0), 0),
+        carry: capAcctBalances.reduce((s, r) => s + Number(r.total_carry_allocations || 0), 0),
+      };
+      rows.push([
+        "",
+        cell("FUND TOTAL — ALL LPs", { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE }), align: align("left") }),
+        cell("", { fill: C.COBALT_DARK }),
+        cell("", { fill: C.COBALT_DARK }),
+        cell(grand.contributions, { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE }), align: align("right"), numFmt: USD_FMT }),
+        cell(grand.fees, { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE }), align: align("right"), numFmt: USD_FMT }),
+        cell(grand.gain, { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE }), align: align("right"), numFmt: USD_FMT }),
+        cell(grand.carry, { fill: C.COBALT_DARK, font: font({ bold: true, color: C.WHITE }), align: align("right"), numFmt: USD_FMT }),
+        cell("", { fill: C.COBALT_DARK }),
+        "",
+      ]);
+    }
+
+    rows.push(["", "", "", "", "", "", "", "", "", ""]);
+    rows.push([
+      "",
+      cell(`Source: lp_capital_account_balances view · Supabase · ${now}`,
+        { font: font({ italic: true, sz: 8, color: C.MID_GREY }), align: align("left") }),
+      "", "", "", "", "", "", "", "",
+    ]);
+
+    const ws = makeSheet(rows, [], COLS);
+    XLSX.utils.book_append_sheet(wb, ws, "Capital Accounts");
   }
 
   // ── WRITE ──────────────────────────────────────────────────────────────────

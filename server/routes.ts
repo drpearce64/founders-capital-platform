@@ -987,6 +987,16 @@ Founders Capital`;
         .limit(1)
         .single();
 
+      // Capital account for this LP on this SPV (most recent tax year)
+      const { data: capAcctRows } = await supabase
+        .from("lp_capital_account_balances")
+        .select("*")
+        .eq("entity_id", entityId)
+        .eq("investor_id", investor_id)
+        .order("tax_year", { ascending: false })
+        .limit(1);
+      const capAcct = capAcctRows && capAcctRows.length > 0 ? capAcctRows[0] : null;
+
       return {
         short_code: c.entities?.short_code,
         entity_name: c.entities?.name,
@@ -1003,6 +1013,16 @@ Founders Capital`;
         spv_total_committed: spvTotal,
         capital_calls: callsForSpv.slice(0, 10),
         expense_allocations: expForSpv,
+        capital_account: capAcct ? {
+          tax_year: capAcct.tax_year,
+          opening_balance: capAcct.opening_balance,
+          total_contributions: capAcct.total_contributions,
+          total_fees: capAcct.total_fees,
+          total_gain_allocations: capAcct.total_gain_allocations,
+          total_carry_allocations: capAcct.total_carry_allocations,
+          total_distributions: capAcct.total_distributions,
+          closing_balance: capAcct.closing_balance,
+        } : null,
       };
     }));
 
@@ -1243,6 +1263,229 @@ Founders Capital`;
       .maybeSingle();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data ?? { status: "no_sync_yet" });
+  });
+
+  // ── LP Capital Account Ledger ──────────────────────────────────────────────────
+
+  // GET all entries — filterable by entity_id, investor_id, tax_year
+  app.get("/api/capital-accounts", async (req, res) => {
+    let query = supabase
+      .from("lp_capital_account_entries")
+      .select(`
+        *,
+        investors(full_name, email),
+        entities(name, short_code)
+      `)
+      .order("entry_date", { ascending: false });
+
+    if (req.query.entity_id)   query = query.eq("entity_id",  req.query.entity_id as string);
+    if (req.query.investor_id) query = query.eq("investor_id", req.query.investor_id as string);
+    if (req.query.tax_year)    query = query.eq("tax_year",    parseInt(req.query.tax_year as string));
+    if (req.query.entry_type)  query = query.eq("entry_type",  req.query.entry_type as string);
+    if (req.query.limit)       query = query.limit(parseInt(req.query.limit as string));
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // GET per-LP running balance summary (from view)
+  app.get("/api/capital-accounts/balances", async (req, res) => {
+    let query = supabase
+      .from("lp_capital_account_balances")
+      .select("*")
+      .order("tax_year", { ascending: true });
+
+    if (req.query.entity_id)   query = query.eq("entity_id",  req.query.entity_id as string);
+    if (req.query.investor_id) query = query.eq("investor_id", req.query.investor_id as string);
+    if (req.query.tax_year)    query = query.eq("tax_year",    parseInt(req.query.tax_year as string));
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // GET K-1 summary for a given tax year — one row per LP per entity
+  app.get("/api/capital-accounts/k1-summary", async (req, res) => {
+    const tax_year = req.query.tax_year
+      ? parseInt(req.query.tax_year as string)
+      : new Date().getFullYear();
+
+    let query = supabase
+      .from("lp_capital_account_balances")
+      .select("*")
+      .eq("tax_year", tax_year)
+      .order("entity_short_code", { ascending: true });
+
+    if (req.query.entity_id) query = query.eq("entity_id", req.query.entity_id as string);
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ tax_year, entries: data });
+  });
+
+  // POST a manual capital account entry
+  app.post("/api/capital-accounts/entries", async (req, res) => {
+    const { entity_id, investor_id, entry_type, tax_year, period,
+            entry_date, amount, description, reference_id, reference_table } = req.body;
+
+    if (!entity_id || !investor_id || !entry_type || !tax_year || !entry_date || amount == null) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const { data, error } = await supabase
+      .from("lp_capital_account_entries")
+      .insert({ entity_id, investor_id, entry_type, tax_year, period,
+                entry_date, amount, description, reference_id, reference_table })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await audit("lp_capital_account_entries", data.id, "INSERT",
+      `Capital account entry: ${entry_type} £${amount} for investor ${investor_id}`, null, data);
+
+    res.status(201).json(data);
+  });
+
+  // POST /api/capital-accounts/sync — auto-populate from capital_call_items + nav_marks
+  app.post("/api/capital-accounts/sync", async (req, res) => {
+    const results = { contributions: 0, fees: 0, gain_allocations: 0, skipped: 0, errors: [] as string[] };
+
+    try {
+      // ── 1. CONTRIBUTIONS from capital_call_items (received_amount) ─────────────────────
+      const { data: callItems, error: ciErr } = await supabase
+        .from("capital_call_items")
+        .select(`
+          id, investor_id, received_amount, received_date, fee_amount,
+          capital_calls(entity_id, call_date)
+        `)
+        .not("received_amount", "is", null)
+        .gt("received_amount", 0);
+
+      if (ciErr) throw new Error(`capital_call_items: ${ciErr.message}`);
+
+      for (const item of (callItems || [])) {
+        const call = item.capital_calls as any;
+        if (!call?.entity_id || !item.received_date) { results.skipped++; continue; }
+
+        const taxYear = new Date(item.received_date).getFullYear();
+        const entryDate = item.received_date;
+
+        // Check if already synced (idempotent)
+        const { data: existing } = await supabase
+          .from("lp_capital_account_entries")
+          .select("id")
+          .eq("investor_id",    item.investor_id)
+          .eq("entity_id",      call.entity_id)
+          .eq("entry_type",     "contribution")
+          .eq("reference_id",   item.id)
+          .maybeSingle();
+
+        if (existing) { results.skipped++; continue; }
+
+        // Insert contribution
+        const { error: insErr } = await supabase.from("lp_capital_account_entries").insert({
+          entity_id:       call.entity_id,
+          investor_id:     item.investor_id,
+          entry_type:      "contribution",
+          tax_year:        taxYear,
+          period:          `Q${Math.ceil((new Date(item.received_date).getMonth() + 1) / 3)}`,
+          entry_date:      entryDate,
+          amount:          item.received_amount,
+          description:     "Capital contribution from capital call",
+          reference_id:    item.id,
+          reference_table: "capital_call_items",
+        });
+        if (insErr) { results.errors.push(insErr.message); continue; }
+        results.contributions++;
+
+        // Insert fee if present
+        if (item.fee_amount && Number(item.fee_amount) > 0) {
+          const { error: feeErr } = await supabase.from("lp_capital_account_entries").insert({
+            entity_id:       call.entity_id,
+            investor_id:     item.investor_id,
+            entry_type:      "fee",
+            tax_year:        taxYear,
+            period:          `Q${Math.ceil((new Date(item.received_date).getMonth() + 1) / 3)}`,
+            entry_date:      entryDate,
+            amount:          -Math.abs(Number(item.fee_amount)), // fees reduce LP account
+            description:     "Deal fee charged at capital call",
+            reference_id:    item.id,
+            reference_table: "capital_call_items",
+          });
+          if (!feeErr) results.fees++;
+        }
+      }
+
+      // ── 2. GAIN ALLOCATIONS from nav_marks ───────────────────────────────────
+      const { data: navMarks, error: navErr } = await supabase
+        .from("nav_marks")
+        .select("*")
+        .order("mark_date", { ascending: true });
+
+      if (navErr) throw new Error(`nav_marks: ${navErr.message}`);
+
+      for (const mark of (navMarks || [])) {
+        if (!mark.fair_value || !mark.cost_basis) continue;
+        const totalGain = Number(mark.fair_value) - Number(mark.cost_basis);
+        if (Math.abs(totalGain) < 0.01) continue;
+
+        const taxYear = new Date(mark.mark_date).getFullYear();
+
+        // Get all LPs in this entity with their pro-rata share
+        const { data: commitments, error: cmtErr } = await supabase
+          .from("investor_commitments")
+          .select("investor_id, committed_amount")
+          .eq("entity_id", mark.entity_id)
+          .is("archived_at", null);
+
+        if (cmtErr || !commitments?.length) continue;
+
+        const totalCommitted = commitments.reduce((s: number, c: any) => s + Number(c.committed_amount), 0);
+        if (totalCommitted === 0) continue;
+
+        for (const cmt of commitments) {
+          const proRata = Number(cmt.committed_amount) / totalCommitted;
+          const lpGain  = Math.round(totalGain * proRata * 100) / 100;
+          if (Math.abs(lpGain) < 0.01) continue;
+
+          // Idempotent check
+          const { data: existingNav } = await supabase
+            .from("lp_capital_account_entries")
+            .select("id")
+            .eq("investor_id",  cmt.investor_id)
+            .eq("entity_id",    mark.entity_id)
+            .in("entry_type",   ["gain_allocation", "loss_allocation"])
+            .eq("reference_id", mark.id)
+            .maybeSingle();
+
+          if (existingNav) { results.skipped++; continue; }
+
+          const entryType = lpGain >= 0 ? "gain_allocation" : "loss_allocation";
+          const { error: gainErr } = await supabase.from("lp_capital_account_entries").insert({
+            entity_id:       mark.entity_id,
+            investor_id:     cmt.investor_id,
+            entry_type:      entryType,
+            tax_year:        taxYear,
+            period:          "Annual",
+            entry_date:      mark.mark_date,
+            amount:          lpGain,
+            description:     `Unrealised ${entryType === "gain_allocation" ? "gain" : "loss"} allocation (pro-rata ${(proRata * 100).toFixed(2)}%)`,
+            reference_id:    mark.id,
+            reference_table: "nav_marks",
+          });
+          if (!gainErr) results.gain_allocations++;
+        }
+      }
+
+      await audit("lp_capital_account_entries", null, "SYNC",
+        `Capital account sync: ${results.contributions} contributions, ${results.fees} fees, ${results.gain_allocations} gain allocations, ${results.skipped} skipped`);
+
+      res.json({ success: true, ...results });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message, ...results });
+    }
   });
 
   // ── P&L Model download (generated live from Supabase on each request) ──────

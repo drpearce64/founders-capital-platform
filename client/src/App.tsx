@@ -19,6 +19,7 @@ import Settings from "./pages/Settings";
 import QuarterlyStatements from "./pages/QuarterlyStatements";
 import AirtableSync from "./pages/AirtableSync";
 import PLModel from "./pages/PLModel";
+import TaxAccounts from "./pages/TaxAccounts";
 import NotFound from "./pages/not-found";
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/statements" component={QuarterlyStatements} />
             <Route path="/airtable-sync" component={AirtableSync} />
             <Route path="/pl-model" component={PLModel} />
+            <Route path="/tax-accounts" component={TaxAccounts} />
             <Route component={NotFound} />
           </Switch>
         </Layout>
