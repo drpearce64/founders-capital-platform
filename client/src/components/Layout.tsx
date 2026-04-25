@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield,
   Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw,
   PieChart, FileSpreadsheet, BookOpen, FileCheck, Network, Globe, Landmark,
-  ChevronRight, CalendarDays, Rocket, BarChart2,
+  ChevronRight, CalendarDays, Rocket, BarChart2, BookUser,
 } from "lucide-react";
 
 // ── Delaware nav ──────────────────────────────────────────────────────────────
@@ -21,6 +21,7 @@ const delawareNav = [
   { href: "/tax-accounts",       label: "Tax & Capital Accounts", icon: BookOpen,        section: "finance" },
   { href: "/accounts-payable",   label: "Accounts Payable",       icon: FileCheck,       section: "finance" },
   { href: "/group-structure",    label: "Group Structure",        icon: Network,         section: "group" },
+  { href: "/investor-register",  label: "Investor Register",      icon: BookUser,        section: "group" },
   { href: "/statements",         label: "Statements",             icon: FileText,        section: "reporting" },
   { href: "/airtable-sync",      label: "Airtable Sync",          icon: RefreshCw,       section: "reporting" },
   { href: "/pl-model",           label: "P&L Model",              icon: FileSpreadsheet, section: "reporting" },
@@ -48,6 +49,7 @@ const caymanNav = [
   { href: "/cayman/nav",              label: "NAV / Fair Value",  icon: BarChart3,       section: "finance" },
   { href: "/cayman/accounts-payable", label: "Accounts Payable",  icon: FileCheck,       section: "finance" },
   { href: "/group-structure",         label: "Group Structure",   icon: Network,         section: "group" },
+  { href: "/investor-register",        label: "Investor Register", icon: BookUser,        section: "group" },
   { href: "/statements",              label: "Statements",        icon: FileText,        section: "reporting" },
   { href: "/reporting-calendar",      label: "Reporting Calendar",icon: CalendarDays,    section: "reporting" },
   { href: "/documents",               label: "Documents",         icon: FolderOpen,      section: "admin" },
@@ -67,6 +69,7 @@ const caymanSections: Record<string, string> = {
 const ycNav = [
   { href: "/yc-portfolio", label: "Portfolio",        icon: LayoutDashboard, section: "overview" },
   { href: "/group-structure", label: "Group Structure", icon: Network,       section: "group" },
+  { href: "/investor-register", label: "Investor Register", icon: BookUser, section: "group" },
   { href: "/documents",     label: "Documents",        icon: FolderOpen,     section: "admin" },
   { href: "/audit-log",     label: "Audit Log",        icon: Shield,         section: "admin" },
 ];
@@ -87,8 +90,10 @@ const JURISDICTIONS: Record<Jurisdiction, { flag: string; label: string; sub: st
 };
 
 function detectJurisdiction(path: string): Jurisdiction {
-  if (path.startsWith("/cayman"))      return "cayman";
-  if (path.startsWith("/yc-portfolio")) return "yc";
+  if (path.startsWith("/cayman"))         return "cayman";
+  if (path.startsWith("/yc-portfolio"))   return "yc";
+  // investor-register is accessible from all jurisdictions — keep current jurisdiction
+  // if accessed directly, default to delaware
   return "delaware";
 }
 

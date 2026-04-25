@@ -1748,6 +1748,103 @@ Founders Capital`;
   });
 
 
+  // ── Investor Register ────────────────────────────────────────────────────────
+  // GET /api/investor-register — unified view across Delaware LPs + YC investors
+  app.get("/api/investor-register", async (_req, res) => {
+    try {
+      // YC investors with their holdings
+      const { data: ycInvestors, error: ycErr } = await supabase
+        .from("yc_investors")
+        .select(`
+          id, airtable_id, name, email, location, kyc_status,
+          total_investments_usd, num_investments, value_of_portfolio,
+          capital_deployed, member_id, yc_deal_count, delaware_deal_count,
+          yc_holdings ( deal_name, yc_batch, closing_date, vehicle )
+        `)
+        .order("name");
+      if (ycErr) return res.status(500).json({ error: ycErr.message });
+
+      // Delaware investors with their commitments
+      const { data: delawareInvestors, error: delErr } = await supabase
+        .from("investors")
+        .select(`
+          id, full_name, email, country, kyc_status,
+          investor_commitments (
+            series_name, entity_id, commitment_usd, called_usd, status,
+            entities ( name, short_code )
+          )
+        `)
+        .is("archived_at", null)
+        .order("full_name");
+      if (delErr) return res.status(500).json({ error: delErr.message });
+
+      // Shape Delaware investors to match register format
+      const delawareShaped = (delawareInvestors ?? []).map((inv: any) => ({
+        source: "delaware" as const,
+        id: inv.id,
+        name: inv.full_name,
+        email: inv.email,
+        location: inv.country,
+        kyc_status: inv.kyc_status,
+        total_investments_usd: (inv.investor_commitments ?? []).reduce(
+          (sum: number, c: any) => sum + (Number(c.commitment_usd) || 0), 0
+        ),
+        num_investments: (inv.investor_commitments ?? []).length,
+        value_of_portfolio: 0,
+        vehicles: ["Delaware"],
+        holdings: (inv.investor_commitments ?? []).map((c: any) => ({
+          deal_name: c.entities?.name ?? c.series_name,
+          vehicle: "Delaware",
+          yc_batch: null,
+          closing_date: null,
+          entity_short_code: c.entities?.short_code ?? null,
+        })),
+      }));
+
+      // Shape YC investors — some also have Delaware holdings
+      const ycShaped = (ycInvestors ?? []).map((inv: any) => {
+        const vehicles: string[] = [];
+        if (inv.yc_deal_count > 0) vehicles.push("YC");
+        if (inv.delaware_deal_count > 0) vehicles.push("Delaware");
+        return {
+          source: "yc" as const,
+          id: inv.id,
+          name: inv.name,
+          email: inv.email,
+          location: inv.location,
+          kyc_status: inv.kyc_status,
+          total_investments_usd: inv.total_investments_usd,
+          num_investments: inv.num_investments,
+          value_of_portfolio: inv.value_of_portfolio,
+          capital_deployed: inv.capital_deployed,
+          member_id: inv.member_id,
+          yc_deal_count: inv.yc_deal_count,
+          delaware_deal_count: inv.delaware_deal_count,
+          vehicles,
+          holdings: (inv.yc_holdings ?? []).map((h: any) => ({
+            deal_name: h.deal_name,
+            vehicle: "YC",
+            yc_batch: h.yc_batch,
+            closing_date: h.closing_date,
+            entity_short_code: null,
+          })),
+        };
+      });
+
+      // Merge: if a YC investor also appears in Delaware, they get both.
+      // For this internal register, return both lists separately and let frontend merge by email.
+      const summary = {
+        total_yc_investors: ycShaped.length,
+        total_delaware_investors: delawareShaped.length,
+        total_yc_holdings: ycShaped.reduce((s: number, i: any) => s + i.yc_deal_count, 0),
+      };
+
+      res.json({ yc: ycShaped, delaware: delawareShaped, summary });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // ── YC Portfolio ──────────────────────────────────────────────────────────────
   // GET /api/yc-deals — read from Supabase yc_deals table (seeded from Airtable)
   app.get("/api/yc-deals", async (_req, res) => {
