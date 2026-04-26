@@ -1848,6 +1848,128 @@ Founders Capital`;
     }
   });
 
+  // ── NAV / Fair Value — Portfolio Summary ─────────────────────────────────────
+  // GET /api/nav-marks/portfolio — Delaware investments + YC deals for unified NAV page
+  app.get("/api/nav-marks/portfolio", async (_req, res) => {
+    try {
+      // Delaware: investments joined to entities (non-Cayman SPVs only)
+      const { data: delawareInvs, error: dErr } = await supabase
+        .from("investments")
+        .select("*, entities(id, name, short_code, base_currency)")
+        .is("archived_at", null)
+        .order("investment_date", { ascending: false });
+      if (dErr) return res.status(500).json({ error: dErr.message });
+
+      const delaware = (delawareInvs ?? []).filter((i: any) =>
+        !i.entities?.short_code?.startsWith("FC-CAYMAN")
+      ).map((i: any) => ({
+        id: i.id,
+        entity_id: i.entity_id,
+        entity_name: i.entities?.name ?? null,
+        short_code: i.entities?.short_code ?? null,
+        company_name: i.company_name,
+        instrument_type: i.instrument_type,
+        investment_date: i.investment_date,
+        cost_basis: i.cost_basis ? Number(i.cost_basis) : null,
+        current_fair_value: i.current_fair_value ? Number(i.current_fair_value) : null,
+        fair_value_date: i.fair_value_date,
+        valuation_basis: i.valuation_basis,
+        moic: i.moic ? Number(i.moic) : null,
+        status: i.status,
+        sector: i.sector,
+        stage: i.stage,
+        jurisdiction: "delaware",
+      }));
+
+      // YC: aggregate from yc_deals
+      const { data: ycDeals, error: yErr } = await supabase
+        .from("yc_deals")
+        .select("id, name, batch, fc_investment, usd_investment_value, live_market_value_usd, moic, status, stage, closing_date, has_followon, followon_round, followon_amount_usd")
+        .order("batch", { ascending: true })
+        .order("name", { ascending: true });
+      if (yErr) return res.status(500).json({ error: yErr.message });
+
+      const ycTotal = (ycDeals ?? []).reduce((s: number, d: any) => s + (Number(d.usd_investment_value) || 0), 0);
+      const ycFV = (ycDeals ?? []).reduce((s: number, d: any) => s + (Number(d.live_market_value_usd) || 0), 0);
+
+      // Delaware totals
+      const dTotal = delaware.reduce((s: number, i: any) => s + (i.cost_basis || 0), 0);
+      const dFV = delaware.reduce((s: number, i: any) => s + (i.current_fair_value || 0), 0);
+
+      res.json({
+        delaware,
+        yc: {
+          deals: ycDeals ?? [],
+          total_cost: ycTotal,
+          total_fv: ycFV,
+          count: (ycDeals ?? []).length,
+          at_cost: true, // valuations not yet updated with real marks
+        },
+        summary: {
+          delaware_cost: dTotal,
+          delaware_fv: dFV,
+          yc_cost: ycTotal,
+          yc_fv: ycFV,
+          total_cost: dTotal + ycTotal,
+          total_fv: dFV + ycFV,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
+  // ── Cayman Capital Calls — LP commitment summary ────────────────────────────
+  // GET /api/cayman/capital-calls — capital calls + Weeks8 commitment
+  app.get("/api/cayman/capital-calls", async (_req, res) => {
+    try {
+      const CAYMAN_FUND_ID = "14d76562-2219-4121-b0bd-5379018ac3b4";
+
+      // Capital calls
+      const { data: calls, error: ccErr } = await supabase
+        .from("capital_calls")
+        .select("*")
+        .eq("entity_id", CAYMAN_FUND_ID)
+        .order("call_number", { ascending: true });
+      if (ccErr) return res.status(500).json({ error: ccErr.message });
+
+      // LP commitments (Weeks8 Holdings)
+      const { data: commitments, error: icErr } = await supabase
+        .from("investor_commitments")
+        .select("*, investors(full_name, investor_type, country_of_residence)")
+        .eq("entity_id", CAYMAN_FUND_ID)
+        .is("archived_at", null);
+      if (icErr) return res.status(500).json({ error: icErr.message });
+
+      const totalCalled = (calls ?? []).filter((c: any) => c.status !== "cancelled")
+        .reduce((s: number, c: any) => s + (Number(c.total_call_amount) || 0), 0);
+      const totalSettled = (calls ?? []).filter((c: any) => c.status === "fully_funded")
+        .reduce((s: number, c: any) => s + (Number(c.total_call_amount) || 0), 0);
+      const totalCommitted = (commitments ?? []).reduce((s: number, c: any) => s + (Number(c.committed_amount) || 0), 0);
+
+      res.json({
+        calls: calls ?? [],
+        commitments: (commitments ?? []).map((c: any) => ({
+          ...c,
+          investor_name: c.investors?.full_name ?? "Unknown",
+          investor_type: c.investors?.investor_type ?? null,
+          country: c.investors?.country_of_residence ?? null,
+        })),
+        summary: {
+          total_committed: totalCommitted,
+          total_called: totalCalled,
+          total_uncalled: totalCommitted - totalCalled,
+          total_settled: totalSettled,
+          total_outstanding: totalCalled - totalSettled,
+          call_count: (calls ?? []).length,
+          currency: "USD",
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // ── YC Portfolio ──────────────────────────────────────────────────────────────
   // GET /api/yc-deals — read from Supabase yc_deals table (seeded from Airtable)
   app.get("/api/yc-deals", async (_req, res) => {
