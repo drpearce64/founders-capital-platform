@@ -1,10 +1,11 @@
 /**
  * Founders Capital — Airtable → Supabase Nightly Sync
  * ─────────────────────────────────────────────────────
- * Maps three Airtable tables to Supabase:
+ * Maps four Airtable tables to Supabase:
  *   Members      → investors
  *   Deals        → entities (SPVs) + investments
  *   Commitments  → investor_commitments
+ *   Deals (YC)   → yc_deals + yc_investors + yc_holdings
  *
  * Run:  node scripts/airtable_sync.js
  * Env:  SUPABASE_URL, SUPABASE_ANON_KEY, AIRTABLE_PAT, AIRTABLE_BASE_ID
@@ -100,10 +101,13 @@ function safeDate(val) {
 // ── Counters ─────────────────────────────────────────────────────────────────
 
 const stats = {
-  investors:   { upserted: 0, skipped: 0, errors: 0 },
-  spvs:        { upserted: 0, skipped: 0, errors: 0 },
-  investments: { upserted: 0, skipped: 0, errors: 0 },
-  commitments: { upserted: 0, skipped: 0, errors: 0 },
+  investors:    { upserted: 0, skipped: 0, errors: 0 },
+  spvs:         { upserted: 0, skipped: 0, errors: 0 },
+  investments:  { upserted: 0, skipped: 0, errors: 0 },
+  commitments:  { upserted: 0, skipped: 0, errors: 0 },
+  yc_deals:     { upserted: 0, skipped: 0, errors: 0 },
+  yc_investors: { upserted: 0, skipped: 0, errors: 0 },
+  yc_holdings:  { upserted: 0, skipped: 0, errors: 0 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -449,6 +453,221 @@ async function syncCommitments() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// STEP 4 — Sync YC Deals → yc_deals + yc_investors + yc_holdings
+// ─────────────────────────────────────────────────────────────────────────────
+
+function extractBatch(name) {
+  const m = String(name || "").match(/\(YC\s+([A-Z]\d+)\)/);
+  return m ? m[1] : null;
+}
+
+async function syncYC() {
+  console.log("\n[4/4] Syncing YC Deals + Members → yc_deals / yc_investors / yc_holdings…");
+
+  // ── 4a: Sync yc_deals from Deals table (YC-named rows only) ──────────────
+  const dealRecords = await fetchAirtableTable(AIRTABLE_TABLES.deals, [
+    "Name",
+    "Status",
+    "Stage",
+    "Batch",
+    "Instrument",
+    "Currency",
+    "FC Investment",
+    "USD Investment Value",
+    "Total Funds Committed",
+    "MOIC",
+    "Live Market Value of Investment USD",
+    "Portfolio Appreciation",
+    "Closing Date",
+    "Quarter",
+    "Year",
+    "Description",
+    "URL",
+    "Deal Code",
+    "Business Type",
+    "Location",
+    "Round",
+    "Pre-money valuation",
+    "Total round size",
+  ]);
+
+  const ycDealRecords = dealRecords.filter(r => String(r.fields["Name"] || "").includes("(YC"));
+  console.log(`  Found ${ycDealRecords.length} YC deals in Airtable`);
+
+  // Build airtable_id → supabase id map for later use in holdings
+  const ycDealIdMap = {}; // airtable_rec_id → supabase yc_deals.id
+
+  for (const rec of ycDealRecords) {
+    const f = rec.fields;
+    const airtable_id = rec.id;
+    const name = String(f["Name"] || "").trim();
+    const batch = extractBatch(name);
+
+    const row = {
+      id:                    name.replace(/[^a-zA-Z0-9]/g, "_").replace(/_+/g, "_"),
+      name,
+      batch,
+      status:                f["Status"] ? String(f["Status"]) : null,
+      stage:                 f["Stage"]  ? String(f["Stage"])  : null,
+      instrument:            f["Instrument"] ? String(f["Instrument"]) : null,
+      currency:              f["Currency"]   ? String(f["Currency"])   : "USD",
+      fc_investment:         safeNum(f["FC Investment"]) ?? 0,
+      usd_investment_value:  safeNum(f["USD Investment Value"]) ?? 0,
+      total_funds_committed: safeNum(f["Total Funds Committed"]) ?? 0,
+      moic:                  safeNum(f["MOIC"]) ?? 1,
+      live_market_value_usd: safeNum(f["Live Market Value of Investment USD"]),
+      portfolio_appreciation:safeNum(f["Portfolio Appreciation"]),
+      closing_date:          safeDate(f["Closing Date"]),
+      quarter:               f["Quarter"] ? String(f["Quarter"]) : null,
+      year:                  f["Year"]    ? String(f["Year"])    : null,
+      description:           f["Description"] ? String(f["Description"]) : null,
+      url:                   f["URL"]    ? String(f["URL"])    : null,
+      deal_code:             f["Deal Code"] ? String(f["Deal Code"]) : null,
+      business_type:         f["Business Type"] ? String(f["Business Type"]) : null,
+      location:              f["Location"] ? String(f["Location"]) : null,
+    };
+
+    try {
+      const { error } = await supabase.from("yc_deals").upsert(row, {
+        onConflict: "id",
+        ignoreDuplicates: false,
+      });
+      if (error) throw error;
+      ycDealIdMap[airtable_id] = row.id;
+      stats.yc_deals.upserted++;
+      await logSync("yc_deals", airtable_id, "upsert", "ok");
+    } catch (err) {
+      stats.yc_deals.errors++;
+      console.error(`  ✗ yc_deal ${name}: ${err.message}`);
+      await logSync("yc_deals", airtable_id, "upsert", "error", err.message);
+    }
+  }
+
+  console.log(`  ✓ yc_deals — upserted: ${stats.yc_deals.upserted}, errors: ${stats.yc_deals.errors}`);
+
+  // ── 4b: Sync YC investors + holdings from Members ─────────────────────────
+  const memberRecords = await fetchAirtableTable(AIRTABLE_TABLES.members, [
+    "Full name",
+    "Email",
+    "Geographical Location",
+    "KYC Status",
+    "Total investments",
+    "Number of Investments Made",
+    "Value of Portfolio",
+    "*Investor Capital Deployed",
+    "Member ID",
+    "CompanyName (from Deal) (from Commitments)",
+    "Closing Date (from Deal) (from Commitments)",
+    "Commitments",
+  ]);
+
+  console.log(`  Fetched ${memberRecords.length} members for YC holdings sync`);
+
+  for (const rec of memberRecords) {
+    const f = rec.fields;
+    const airtable_id = rec.id;
+
+    const companyNames = Array.isArray(f["CompanyName (from Deal) (from Commitments)"])
+      ? f["CompanyName (from Deal) (from Commitments)"]
+      : [];
+
+    const ycDeals = companyNames.filter(n => String(n).includes("(YC"));
+    if (ycDeals.length === 0) {
+      stats.yc_investors.skipped++;
+      continue;
+    }
+
+    const name  = String(f["Full name"] || "").trim();
+    const email = f["Email"] ? String(f["Email"]).toLowerCase().trim() : null;
+    if (!name && !email) { stats.yc_investors.skipped++; continue; }
+
+    const allDeals = companyNames;
+    const delawareDeals = allDeals.filter(n => !String(n).includes("(YC"));
+
+    const investorRow = {
+      airtable_id,
+      name,
+      email,
+      location:              f["Geographical Location"] ? String(f["Geographical Location"]) : null,
+      kyc_status:            f["KYC Status"] ? String(f["KYC Status"]) : null,
+      total_investments_usd: safeNum(f["Total investments"]) ?? 0,
+      num_investments:       parseInt(f["Number of Investments Made"] || 0, 10),
+      value_of_portfolio:    safeNum(f["Value of Portfolio"]) ?? 0,
+      capital_deployed:      safeNum(f["*Investor Capital Deployed"]) ?? 0,
+      member_id:             f["Member ID"] ? String(f["Member ID"]) : null,
+      yc_deal_count:         ycDeals.length,
+      delaware_deal_count:   delawareDeals.length,
+    };
+
+    try {
+      const { data: upserted, error: invErr } = await supabase
+        .from("yc_investors")
+        .upsert(investorRow, { onConflict: "airtable_id", ignoreDuplicates: false })
+        .select("id")
+        .maybeSingle();
+
+      if (invErr) throw invErr;
+
+      // Fetch the investor UUID (upsert may not return it reliably)
+      const { data: invRow } = await supabase
+        .from("yc_investors")
+        .select("id")
+        .eq("airtable_id", airtable_id)
+        .maybeSingle();
+
+      const investorUuid = invRow?.id;
+      stats.yc_investors.upserted++;
+
+      if (!investorUuid) continue;
+
+      // Sync yc_holdings — delete existing for this investor, re-insert
+      await supabase.from("yc_holdings").delete().eq("investor_airtable_id", airtable_id);
+
+      const closingDates = Array.isArray(f["Closing Date (from Deal) (from Commitments)"])
+        ? f["Closing Date (from Deal) (from Commitments)"]
+        : [];
+
+      const holdingRows = ycDeals.map((dealName, i) => {
+        const batch       = extractBatch(dealName);
+        const closingDate = closingDates[allDeals.indexOf(dealName)] ?? null;
+        return {
+          investor_id:          investorUuid,
+          investor_airtable_id: airtable_id,
+          deal_name:            dealName,
+          yc_batch:             batch,
+          closing_date:         safeDate(closingDate),
+          vehicle:              "YC",
+        };
+      });
+
+      if (holdingRows.length > 0) {
+        const { error: hErr } = await supabase.from("yc_holdings").insert(holdingRows);
+        if (hErr) throw hErr;
+        stats.yc_holdings.upserted += holdingRows.length;
+      }
+
+      await logSync("yc_investors", airtable_id, "upsert", "ok");
+    } catch (err) {
+      stats.yc_investors.errors++;
+      console.error(`  ✗ yc_investor ${name}: ${err.message}`);
+      await logSync("yc_investors", airtable_id, "upsert", "error", err.message);
+    }
+  }
+
+  // Re-populate investment_amount_usd + moic on holdings from yc_deals
+  try {
+    await supabase.rpc ? null : null; // no rpc needed — use a direct update
+    await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/rpc/refresh_yc_holdings_amounts`,
+      { method: "POST", headers: { apikey: process.env.SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`, "Content-Type": "application/json" }, body: "{}" }
+    ).catch(() => null); // non-fatal — run separately if needed
+  } catch { /* non-fatal */ }
+
+  console.log(`  ✓ yc_investors — upserted: ${stats.yc_investors.upserted}, skipped: ${stats.yc_investors.skipped}, errors: ${stats.yc_investors.errors}`);
+  console.log(`  ✓ yc_holdings  — inserted: ${stats.yc_holdings.upserted}, errors: ${stats.yc_holdings.errors}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -467,15 +686,19 @@ async function main() {
   await syncMembers();
   await syncDeals();
   await syncCommitments();
+  await syncYC();
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
   console.log("\n═══════════════════════════════════════════════════");
   console.log(`  Sync complete in ${elapsed}s`);
-  console.log(`  investors:   ${stats.investors.upserted} upserted, ${stats.investors.errors} errors`);
-  console.log(`  entities:    ${stats.spvs.upserted} upserted, ${stats.spvs.errors} errors`);
-  console.log(`  investments: ${stats.investments.upserted} upserted, ${stats.investments.errors} errors`);
-  console.log(`  commitments: ${stats.commitments.upserted} upserted, ${stats.commitments.errors} errors`);
+  console.log(`  investors:    ${stats.investors.upserted} upserted, ${stats.investors.errors} errors`);
+  console.log(`  entities:     ${stats.spvs.upserted} upserted, ${stats.spvs.errors} errors`);
+  console.log(`  investments:  ${stats.investments.upserted} upserted, ${stats.investments.errors} errors`);
+  console.log(`  commitments:  ${stats.commitments.upserted} upserted, ${stats.commitments.errors} errors`);
+  console.log(`  yc_deals:     ${stats.yc_deals.upserted} upserted, ${stats.yc_deals.errors} errors`);
+  console.log(`  yc_investors: ${stats.yc_investors.upserted} upserted, ${stats.yc_investors.errors} errors`);
+  console.log(`  yc_holdings:  ${stats.yc_holdings.upserted} upserted, ${stats.yc_holdings.errors} errors`);
   console.log("═══════════════════════════════════════════════════\n");
 
   // Write a final summary row to the sync log
@@ -490,6 +713,9 @@ async function main() {
       entities:         stats.spvs,
       investments:      stats.investments,
       commitments:      stats.commitments,
+      yc_deals:         stats.yc_deals,
+      yc_investors:     stats.yc_investors,
+      yc_holdings:      stats.yc_holdings,
     }),
   });
 }
