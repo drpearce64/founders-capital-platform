@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { Search } from "lucide-react";
 import {
   TrendingUp, DollarSign, Building2, ExternalLink, Layers,
 } from "lucide-react";
@@ -136,6 +137,7 @@ function KpiCard({ icon: Icon, label, value, sub }: { icon: any; label: string; 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function YCDashboard() {
   const [batchFilter, setBatchFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<keyof YCDeal>("batch");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -156,6 +158,10 @@ export default function YCDashboard() {
   // Filtered + sorted deals
   const filtered = useMemo(() => {
     let d = batchFilter === "all" ? deals : deals.filter((x) => x.batch === batchFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      d = d.filter((x) => (x.name ?? "").toLowerCase().includes(q) || (x.batch ?? "").toLowerCase().includes(q));
+    }
     return [...d].sort((a, b) => {
       const av = a[sortField] ?? "";
       const bv = b[sortField] ?? "";
@@ -321,6 +327,24 @@ export default function YCDashboard() {
 
         {/* ── Scrollable body ───────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto p-8 space-y-6">
+
+          {/* Search bar */}
+          <div className="relative mb-2">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "hsl(var(--muted-foreground))" }} />
+            <input
+              type="text"
+              placeholder="Search companies…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full sm:w-64 pl-9 pr-3 py-1.5 rounded-lg text-sm outline-none"
+              style={{
+                background: "hsl(var(--card))",
+                border: "1px solid hsl(var(--border))",
+                color: "hsl(var(--foreground))",
+              }}
+              data-testid="input-search-portfolio"
+            />
+          </div>
 
           {/* Active cohort label */}
           {activeBatchInfo && (

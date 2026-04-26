@@ -11,6 +11,9 @@ interface Holding {
   yc_batch: string | null;
   closing_date: string | null;
   entity_short_code: string | null;
+  investment_amount_usd?: number | null;
+  moic?: number | null;
+  currency?: string | null;
 }
 
 interface InvestorRow {
@@ -425,7 +428,7 @@ export default function InvestorRegister() {
                     <div
                       className="grid text-xs font-semibold uppercase tracking-wider px-10 py-2 border-b"
                       style={{
-                        gridTemplateColumns: "2fr 0.8fr 0.8fr 1fr",
+                        gridTemplateColumns: "2fr 0.7fr 0.7fr 1fr 1fr 0.7fr",
                         borderColor: "hsl(0 0% 100% / 0.06)",
                         color: "hsl(0 0% 35%)",
                       }}
@@ -433,7 +436,9 @@ export default function InvestorRegister() {
                       <div>Holding</div>
                       <div>Vehicle</div>
                       <div>Batch</div>
+                      <div className="text-right">FC Investment</div>
                       <div>Closing Date</div>
+                      <div className="text-right">MOIC</div>
                     </div>
 
                     {/* Holdings rows */}
@@ -442,7 +447,7 @@ export default function InvestorRegister() {
                         key={hi}
                         className="grid items-center px-10 py-2 text-xs border-b last:border-b-0"
                         style={{
-                          gridTemplateColumns: "2fr 0.8fr 0.8fr 1fr",
+                          gridTemplateColumns: "2fr 0.7fr 0.7fr 1fr 1fr 0.7fr",
                           borderColor: "hsl(0 0% 100% / 0.04)",
                           color: "hsl(0 0% 60%)",
                         }}
@@ -458,7 +463,15 @@ export default function InvestorRegister() {
                         </div>
                         <div><VehicleBadge label={h.vehicle} /></div>
                         <div>{h.yc_batch ?? "—"}</div>
+                        <div className="font-mono text-right" style={{ color: "hsl(0 0% 70%)" }}>
+                          {h.investment_amount_usd != null ? fmt(h.investment_amount_usd) : "—"}
+                        </div>
                         <div>{h.closing_date ? new Date(h.closing_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</div>
+                        <div className="font-mono text-right" style={{
+                          color: h.moic != null && h.moic > 1 ? "hsl(142 60% 58%)" : "hsl(0 0% 55%)"
+                        }}>
+                          {h.moic != null ? `${h.moic.toFixed(2)}x` : "—"}
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -1759,7 +1759,7 @@ Founders Capital`;
           id, airtable_id, name, email, location, kyc_status,
           total_investments_usd, num_investments, value_of_portfolio,
           capital_deployed, member_id, yc_deal_count, delaware_deal_count,
-          yc_holdings ( deal_name, yc_batch, closing_date, vehicle )
+          yc_holdings ( deal_name, yc_batch, closing_date, vehicle, investment_amount_usd, moic, currency )
         `)
         .order("name");
       if (ycErr) return res.status(500).json({ error: ycErr.message });
@@ -1827,6 +1827,9 @@ Founders Capital`;
             yc_batch: h.yc_batch,
             closing_date: h.closing_date,
             entity_short_code: null,
+            investment_amount_usd: h.investment_amount_usd ?? null,
+            moic: h.moic ?? null,
+            currency: h.currency ?? null,
           })),
         };
       });
