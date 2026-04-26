@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Search } from "lucide-react";
 import {
-  TrendingUp, DollarSign, Building2, ExternalLink, Layers,
+  TrendingUp, DollarSign, Building2, ExternalLink, Layers, Zap,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -29,6 +29,13 @@ interface YCDeal {
   deal_code: string;
   business_type: string;
   location: string;
+  has_followon: boolean;
+  followon_round: string | null;
+  followon_amount_usd: number | null;
+  followon_date: string | null;
+  followon_lead_investor: string | null;
+  followon_post_money_valuation: number | null;
+  followon_source: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -138,6 +145,7 @@ function KpiCard({ icon: Icon, label, value, sub }: { icon: any; label: string; 
 export default function YCDashboard() {
   const [batchFilter, setBatchFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [followonOnly, setFollowonOnly] = useState(false);
   const [sortField, setSortField] = useState<keyof YCDeal>("batch");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -162,6 +170,7 @@ export default function YCDashboard() {
       const q = search.toLowerCase();
       d = d.filter((x) => (x.name ?? "").toLowerCase().includes(q) || (x.batch ?? "").toLowerCase().includes(q));
     }
+    if (followonOnly) d = d.filter((x) => x.has_followon);
     return [...d].sort((a, b) => {
       const av = a[sortField] ?? "";
       const bv = b[sortField] ?? "";
@@ -181,7 +190,9 @@ export default function YCDashboard() {
     const totalSPVSize     = src.reduce((s, d) => s + (d.usd_investment_value ?? 0), 0);
     const totalLiveValue   = src.reduce((s, d) => s + (d.live_market_value_usd ?? d.usd_investment_value ?? 0), 0);
     const portfolioMoic    = totalSPVSize > 0 ? totalLiveValue / totalSPVSize : 1;
-    return { totalFCDeployed, totalSPVSize, portfolioMoic, companies: src.length };
+    const followonCount    = src.filter(d => d.has_followon).length;
+    const followonTotalUSD = src.filter(d => d.has_followon).reduce((s, d) => s + (d.followon_amount_usd ?? 0), 0);
+    return { totalFCDeployed, totalSPVSize, portfolioMoic, companies: src.length, followonCount, followonTotalUSD };
   }, [filtered]);
 
   // Per-batch counts for the filter bar
@@ -367,7 +378,7 @@ export default function YCDashboard() {
           )}
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <KpiCard
               icon={Building2}
               label="Companies"
@@ -392,6 +403,28 @@ export default function YCDashboard() {
               value={fmtMoic(kpis.portfolioMoic)}
               sub="Live / cost"
             />
+            <div
+              onClick={() => setFollowonOnly(f => !f)}
+              className="rounded-xl border p-5 flex flex-col gap-2 cursor-pointer transition-all"
+              style={{
+                background: followonOnly ? "hsl(231 70% 54% / 0.18)" : "hsl(var(--card))",
+                borderColor: followonOnly ? "hsl(231 70% 54% / 0.5)" : "hsl(var(--border))",
+              }}
+              data-testid="toggle-followon"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider" style={{ color: followonOnly ? "hsl(231 70% 72%)" : "hsl(var(--muted-foreground))" }}>
+                  Follow-on Rounds
+                </span>
+                <Zap size={16} style={{ color: followonOnly ? "hsl(231 70% 72%)" : "hsl(var(--muted-foreground))" }} />
+              </div>
+              <div className="text-xl font-semibold font-mono" style={{ color: followonOnly ? "hsl(231 70% 80%)" : "hsl(var(--foreground))" }}>
+                {kpis.followonCount}
+              </div>
+              <div className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                {kpis.followonTotalUSD > 0 ? `$${(kpis.followonTotalUSD / 1e6).toFixed(1)}M raised · ` : ""}{followonOnly ? "click to show all" : "click to filter"}
+              </div>
+            </div>
           </div>
 
           {/* Portfolio Table */}
@@ -437,6 +470,7 @@ export default function YCDashboard() {
                         <SortIcon field={field} />
                       </th>
                     ))}
+                    <th className="px-4 py-3 text-left font-medium">Follow-on</th>
                     <th className="px-4 py-3 text-left font-medium">Link</th>
                   </tr>
                 </thead>
@@ -525,6 +559,31 @@ export default function YCDashboard() {
                         {deal.closing_date ? deal.closing_date.slice(0, 10) : deal.quarter || "—"}
                       </td>
 
+                      {/* Follow-on */}
+                      <td className="px-4 py-3">
+                        {deal.has_followon ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                              style={{ background: "hsl(231 70% 54% / 0.18)", color: "hsl(231 70% 76%)" }}
+                              title={deal.followon_lead_investor ? `Lead: ${deal.followon_lead_investor}` : undefined}
+                            >
+                              <Zap size={10} />
+                              {deal.followon_round ?? "Round"}
+                              {deal.followon_amount_usd ? ` · $${(deal.followon_amount_usd / 1e6).toFixed(1)}M` : ""}
+                            </span>
+                            {deal.followon_date && (
+                              <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                                {deal.followon_date}
+                                {deal.followon_lead_investor ? ` · ${deal.followon_lead_investor.split(',')[0].trim()}` : ""}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>—</span>
+                        )}
+                      </td>
+
                       {/* Link */}
                       <td className="px-4 py-3">
                         {deal.url ? (
@@ -545,7 +604,7 @@ export default function YCDashboard() {
 
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <td colSpan={11} className="px-4 py-8 text-center text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
                         No deals found for this cohort.
                       </td>
                     </tr>
