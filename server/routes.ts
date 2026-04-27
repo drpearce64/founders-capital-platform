@@ -1119,6 +1119,9 @@ Founders Capital`;
         committed_amount: c.committed_amount,
         called_amount: c.called_amount,
         fee_rate: c.fee_rate,
+        cost_basis: inv?.cost_basis ?? null,
+        current_fair_value: inv?.current_fair_value ?? null,
+        investment_date: inv?.investment_date ?? null,
       };
     });
 

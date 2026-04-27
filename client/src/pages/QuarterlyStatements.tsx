@@ -59,7 +59,8 @@ export default function QuarterlyStatements() {
   async function downloadStatement(investorId: string, lpName: string) {
     setDownloading(investorId);
     try {
-      const res = await fetch(
+      const res = await apiRequest(
+        "GET",
         `/api/reports/quarterly-statement/${investorId}?period=${encodeURIComponent(period)}`
       );
       if (!res.ok) {
@@ -279,6 +280,29 @@ export default function QuarterlyStatements() {
                                 {fmtFull(outstanding)}
                               </p>
                             </div>
+                            {pos.cost_basis && (
+                              <div>
+                                <p className="text-gray-500">Cost Basis</p>
+                                <p className="font-mono text-gray-700">{fmtFull(Number(pos.cost_basis))}</p>
+                              </div>
+                            )}
+                            {pos.current_fair_value && (
+                              <div>
+                                <p className="text-gray-500">Fair Value</p>
+                                <p className="font-mono text-emerald-700 font-medium">{fmtFull(Number(pos.current_fair_value))}</p>
+                              </div>
+                            )}
+                            {pos.cost_basis && pos.current_fair_value && (
+                              <div>
+                                <p className="text-gray-500">MOIC</p>
+                                <p className={`font-mono font-semibold ${
+                                  Number(pos.current_fair_value) >= Number(pos.cost_basis)
+                                    ? "text-emerald-600" : "text-red-500"
+                                }`}>
+                                  {(Number(pos.current_fair_value) / Number(pos.cost_basis)).toFixed(2)}x
+                                </p>
+                              </div>
+                            )}
                           </div>
                           <div className="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden">
                             <div
