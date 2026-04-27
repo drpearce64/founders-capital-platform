@@ -1973,6 +1973,57 @@ Founders Capital`;
     }
   });
 
+  // ── Reporting Calendar ─────────────────────────────────────────────────────────
+  // GET /api/reporting-calendar/completions — all completions (optionally filtered by period)
+  app.get("/api/reporting-calendar/completions", async (req, res) => {
+    try {
+      const { period } = req.query;
+      let q = supabase.from("reporting_completions").select("*").order("completed_at", { ascending: false });
+      if (period) q = q.eq("period", period as string);
+      const { data, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data ?? []);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
+  // POST /api/reporting-calendar/completions — mark an item complete for a period
+  app.post("/api/reporting-calendar/completions", async (req, res) => {
+    try {
+      const { item_id, period, completed_by, notes } = req.body;
+      if (!item_id || !period) return res.status(400).json({ error: "item_id and period required" });
+      const { data, error } = await supabase
+        .from("reporting_completions")
+        .upsert({ item_id, period, completed_by: completed_by || "FC Portal", notes: notes || null,
+                  completed_at: new Date().toISOString() },
+                { onConflict: "item_id,period" })
+        .select()
+        .single();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
+  // DELETE /api/reporting-calendar/completions — unmark an item (undo complete)
+  app.delete("/api/reporting-calendar/completions", async (req, res) => {
+    try {
+      const { item_id, period } = req.body;
+      if (!item_id || !period) return res.status(400).json({ error: "item_id and period required" });
+      const { error } = await supabase
+        .from("reporting_completions")
+        .delete()
+        .eq("item_id", item_id)
+        .eq("period", period);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // ── YC Portfolio ──────────────────────────────────────────────────────────────
   // GET /api/yc-deals — read from Supabase yc_deals table (seeded from Airtable)
   app.get("/api/yc-deals", async (_req, res) => {
