@@ -2024,6 +2024,103 @@ Founders Capital`;
     }
   });
 
+  // ── FC Own Investments (Airtable live proxy) ───────────────────────────────
+  // GET /api/fc-investments — fetches directly from Airtable Deals table
+  // and returns cleaned deal records for the FC Own Investments dashboard.
+  app.get("/api/fc-investments", async (_req, res) => {
+    try {
+      const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
+      const AIRTABLE_TABLE = "tbln6AszmitsErPgh";
+      const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
+
+      if (!AIRTABLE_PAT) {
+        return res.status(500).json({ error: "AIRTABLE_PAT not configured on server" });
+      }
+
+      const fields = [
+        "CompanyName", "Deal Code", "Status", "Holding Status",
+        "Stage", "Closing Date", "Quarter closed", "Month Closed",
+        "Investment Currency", "FC investment amount",
+        "FC Investment USD Conversion", "FC Investment PV USD",
+        "USD INVESTMENT VALUE", "MOIC",
+        "investors per deal", "Pre-money valuation",
+        "Business Type", "Location", "Underlying Company Jurisdiction",
+        "Direct / Indirect", "Type", "URL", "Company Description",
+        "Deal Square Image", "Share class", "Running Return",
+        "Portfolio Appreciation ($)",
+      ];
+
+      const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
+      url.searchParams.set("maxRecords", "200");
+      // Only fetch Closed or Live deals (exclude pipeline junk)
+      url.searchParams.set("filterByFormula", `OR({Status}='Closed',{Status}='Live',{Status}='Exited')`);
+      fields.forEach(f => url.searchParams.append("fields[]", f));
+
+      const airtableRes = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${AIRTABLE_PAT}` },
+      });
+
+      if (!airtableRes.ok) {
+        const text = await airtableRes.text();
+        return res.status(airtableRes.status).json({ error: text });
+      }
+
+      const json: any = await airtableRes.json();
+      const records = (json.records ?? []).map((r: any) => {
+        const f = r.fields;
+        // Flatten FC Investment USD Conversion array -> single number
+        const fcInvestedUsd = Array.isArray(f["FC Investment USD Conversion"])
+          ? f["FC Investment USD Conversion"].reduce((a: number, b: number) => a + b, 0)
+          : (f["FC investment amount"] ?? 0);
+        const fcPvUsd = Array.isArray(f["FC Investment PV USD"])
+          ? f["FC Investment PV USD"].reduce((a: number, b: number) => a + b, 0)
+          : fcInvestedUsd;
+        const squareImage = Array.isArray(f["Deal Square Image"]) && f["Deal Square Image"].length > 0
+          ? f["Deal Square Image"][0]?.thumbnails?.large?.url ?? f["Deal Square Image"][0]?.url ?? null
+          : null;
+        return {
+          id: r.id,
+          name: f["CompanyName"] ?? "Unknown",
+          deal_code: f["Deal Code"] ?? "",
+          status: f["Status"] ?? "",
+          holding_status: f["Holding Status"] ?? "",
+          stage: f["Stage"] ?? "",
+          closing_date: f["Closing Date"] ?? null,
+          quarter_closed: f["Quarter closed"] ?? "",
+          investment_currency: f["Investment Currency"] ?? "USD",
+          fc_invested_usd: fcInvestedUsd,
+          fc_pv_usd: fcPvUsd,
+          deal_size_usd: f["USD INVESTMENT VALUE"] ?? 0,
+          moic: f["MOIC"] ?? 1,
+          investor_count: f["investors per deal"] ?? 0,
+          pre_money_valuation: f["Pre-money valuation"] ?? null,
+          business_type: Array.isArray(f["Business Type"]) ? f["Business Type"] : [],
+          location: f["Location"] ?? f["Underlying Company Jurisdiction"] ?? "",
+          deal_type: f["Type"] ?? "",
+          direct_indirect: f["Direct / Indirect"] ?? "",
+          website: f["URL"] ?? null,
+          description: f["Company Description"] ?? "",
+          square_image: squareImage,
+          share_class: f["Share class"] ?? "",
+          running_return: f["Running Return"] ?? 0,
+          portfolio_appreciation: f["Portfolio Appreciation ($)"] ?? 0,
+        };
+      });
+
+      // Sort by closing_date descending
+      records.sort((a: any, b: any) => {
+        if (!a.closing_date && !b.closing_date) return 0;
+        if (!a.closing_date) return 1;
+        if (!b.closing_date) return -1;
+        return new Date(b.closing_date).getTime() - new Date(a.closing_date).getTime();
+      });
+
+      res.json({ investments: records, total: records.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // ── YC Portfolio ──────────────────────────────────────────────────────────────
   // GET /api/yc-deals — read from Supabase yc_deals table (seeded from Airtable)
   app.get("/api/yc-deals", async (_req, res) => {

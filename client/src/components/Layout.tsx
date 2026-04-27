@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield,
   Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw,
   PieChart, FileSpreadsheet, BookOpen, FileCheck, Network, Globe, Landmark,
-  ChevronRight, CalendarDays, Rocket, BarChart2, BookUser,
+  ChevronRight, CalendarDays, Rocket, BarChart2, BookUser, Briefcase,
 } from "lucide-react";
 
 // ── Delaware nav ──────────────────────────────────────────────────────────────
@@ -20,6 +20,7 @@ const delawareNav = [
   { href: "/nav-marks",          label: "NAV / Fair Value",       icon: BarChart3,       section: "finance" },
   { href: "/tax-accounts",       label: "Tax & Capital Accounts", icon: BookOpen,        section: "finance" },
   { href: "/accounts-payable",   label: "Accounts Payable",       icon: FileCheck,       section: "finance" },
+  { href: "/fc-investments",     label: "FC Investments",         icon: Briefcase,       section: "overview" },
   { href: "/group-structure",    label: "Group Structure",        icon: Network,         section: "group" },
   { href: "/investor-register",  label: "Investor Register",      icon: BookUser,        section: "group" },
   { href: "/statements",         label: "Statements",             icon: FileText,        section: "reporting" },
