@@ -302,9 +302,19 @@ export default function FCInvestments() {
     queryKey: ["/api/fc-investments"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/fc-investments");
-      return res.json() as Promise<{ investments: FCInvestment[]; total: number }>;
+      const text = await res.text();
+      // Guard against HTML error pages from Railway
+      if (!res.ok || text.trim().startsWith("<")) {
+        throw new Error(
+          res.status === 500
+            ? "Server error — AIRTABLE_PAT may not be set on Railway"
+            : `Request failed (${res.status})`
+        );
+      }
+      return JSON.parse(text) as { investments: FCInvestment[]; total: number };
     },
     staleTime: 5 * 60 * 1000, // 5 min cache
+    retry: 1,
   });
 
   const investments = data?.investments ?? [];
@@ -357,19 +367,28 @@ export default function FCInvestments() {
 
   if (error) {
     const errMsg = (error as Error).message ?? String(error);
-    const needsPat = errMsg.includes("AIRTABLE_PAT");
+    const needsPat = errMsg.includes("AIRTABLE_PAT") || errMsg.includes("500");
     return (
-      <div className="p-8">
+      <div className="p-8 space-y-4">
+        <div>
+          <h1 className="text-xl font-bold text-[#1A1209]">FC Own Investments</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Live from Airtable · Founders Capital proprietary portfolio</p>
+        </div>
         <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="p-6">
-            <h3 className="font-semibold text-amber-900 mb-2">
-              {needsPat ? "Airtable API key not configured" : "Failed to load investments"}
+          <CardContent className="p-6 space-y-3">
+            <h3 className="font-semibold text-amber-900">
+              {needsPat ? "Airtable API key not configured on Railway" : "Failed to load investments"}
             </h3>
-            <p className="text-sm text-amber-700">
-              {needsPat
-                ? "Add the AIRTABLE_PAT environment variable to Railway to enable live data from Airtable."
-                : errMsg}
-            </p>
+            {needsPat ? (
+              <ol className="text-sm text-amber-800 space-y-1.5 list-decimal list-inside">
+                <li>Go to <strong>airtable.com/create/tokens</strong> and create a token with <code className="bg-amber-100 px-1 rounded">data.records:read</code> scope on the <strong>Founders Capital 2.0</strong> base</li>
+                <li>Open your Railway project → service → <strong>Variables</strong> tab</li>
+                <li>Add a variable named <code className="bg-amber-100 px-1 rounded">AIRTABLE_PAT</code> with the token value</li>
+                <li>Railway will redeploy automatically — this page will load once it's set</li>
+              </ol>
+            ) : (
+              <p className="text-sm text-amber-700">{errMsg}</p>
+            )}
           </CardContent>
         </Card>
       </div>
