@@ -98,6 +98,15 @@ function safeDate(val) {
   return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
 }
 
+function mapInvestmentStatus(val) {
+  if (!val) return "active";
+  const v = String(val).toLowerCase().trim();
+  if (v.includes("exit") || v === "exited") return "exited";
+  if (v.includes("partial")) return "partially_exited";
+  if (v.includes("written") || v.includes("write") || v.includes("off")) return "written_off";
+  return "active"; // default: active (covers Closed, Open, Live, etc.)
+}
+
 function mapStage(val) {
   if (!val) return null;
   const v = String(val).toLowerCase().trim();
@@ -329,7 +338,7 @@ async function syncDeals() {
       investment_date:     safeDate(f["Closing Date"]),
       cost_basis:          safeNum(f["Total Received"]) ?? 0,
       current_fair_value:  safeNum(f["Total Received"]) ?? 0,
-      status:              f["Status"] === "Closed" ? "active" : "pending",
+      status:              mapInvestmentStatus(f["Status"]),
       stage:               mapStage(f["Stage"]),
       instrument_type:     mapInstrumentType(f["Type"]),
       notes:               deal_code ?? null,
