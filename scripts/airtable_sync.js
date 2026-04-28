@@ -482,31 +482,8 @@ async function syncYC() {
   console.log("\n[4/4] Syncing YC Deals + Members → yc_deals / yc_investors / yc_holdings…");
 
   // ── 4a: Sync yc_deals from Deals table (YC-named rows only) ──────────────
-  const dealRecords = await fetchAirtableTable(AIRTABLE_TABLES.deals, [
-    "CompanyName",
-    "Status",
-    "Stage",
-    "Batch",
-    "Instrument",
-    "Currency",
-    "FC Investment",
-    "USD Investment Value",
-    "Total Funds Committed",
-    "MOIC",
-    "Live Market Value of Investment USD",
-    "Portfolio Appreciation",
-    "Closing Date",
-    "Quarter",
-    "Year",
-    "Company Description",
-    "URL",
-    "Deal Code",
-    "Business Type",
-    "Location",
-    "Round",
-    "Pre-money valuation",
-    "Total round size",
-  ]);
+  // Fetch all fields (no filter) to avoid UNKNOWN_FIELD_NAME errors from YC-specific fields
+  const dealRecords = await fetchAirtableTable(AIRTABLE_TABLES.deals, []);
 
   const ycDealRecords = dealRecords.filter(r => String(r.fields["CompanyName"] || "").includes("(YC"));
   console.log(`  Found ${ycDealRecords.length} YC deals in Airtable`);
