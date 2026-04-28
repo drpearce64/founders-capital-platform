@@ -60,12 +60,33 @@ async function buildAll() {
 }
 
 async function copyScripts() {
-  // Copy plain-JS scripts into dist/scripts/ so fork() can find them at runtime
   await mkdir("dist/scripts", { recursive: true });
-  await copyFile("scripts/airtable_sync.js", "dist/scripts/airtable_sync.js");
-  // Copy the live P&L generator so the download route can call it in production
+
+  // Bundle airtable_sync.js with esbuild so @supabase/supabase-js is inlined
+  // (the raw script can't require() external deps in Railway's dist/ directory)
+  await esbuild({
+    entryPoints: ["scripts/airtable_sync.js"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/scripts/airtable_sync.js",
+    logLevel: "silent",
+  });
+
+  // Bundle gmail_invoice_sync.cjs (uses only Node built-ins — still bundle for consistency)
+  await esbuild({
+    entryPoints: ["scripts/gmail_invoice_sync.cjs"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/scripts/gmail_invoice_sync.cjs",
+    logLevel: "silent",
+  });
+
+  // Copy the live P&L generator (no external deps — plain copy is fine)
   await copyFile("scripts/generate_pl_model.cjs", "dist/scripts/generate_pl_model.cjs");
-  console.log("scripts copied to dist/scripts/");
+
+  console.log("scripts bundled to dist/scripts/");
 }
 
 buildAll()

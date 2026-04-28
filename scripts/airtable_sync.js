@@ -17,8 +17,8 @@ const { createClient } = require("@supabase/supabase-js");
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-const SUPABASE_URL      = process.env.SUPABASE_URL;
-const SUPABASE_KEY      = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_URL      = process.env.SUPABASE_URL      || "https://yoyrwrdzivygufbzckdv.supabase.co";
+const SUPABASE_KEY      = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
 const AIRTABLE_PAT      = process.env.AIRTABLE_PAT;
 const AIRTABLE_BASE_ID  = process.env.AIRTABLE_BASE_ID || "appXSAE1n2PvdCQB1";
 
@@ -30,7 +30,7 @@ const AIRTABLE_TABLES = {
 
 const AIRTABLE_API = "https://api.airtable.com/v0";
 
-// ── Supabase client ──────────────────────────────────────────────────────────
+// ── Supabase client (bundled by esbuild — no external dep needed at runtime) ───
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
