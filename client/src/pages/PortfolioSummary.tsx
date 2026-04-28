@@ -9,8 +9,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
   TrendingUp, DollarSign, BarChart3, AlertTriangle,
-  ChevronDown, ChevronRight, ExternalLink, Clock,
+  ChevronDown, ChevronRight, ExternalLink, Clock, X,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ValuationMarkModal } from "@/components/ValuationMarkModal";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -270,6 +271,7 @@ function SubtotalRow({ cost, fv }: { cost: number; fv: number }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 type FilterKey = "all" | "stale" | "marked" | "atcost";
+type DrillKey = "cost" | "fv" | "gl" | "marks" | null;
 
 export default function PortfolioSummary() {
   const qc = useQueryClient();
@@ -279,6 +281,11 @@ export default function PortfolioSummary() {
   });
   const [filter, setFilter] = useState<FilterKey>("all");
   const [valuationInv, setValuationInv] = useState<any | null>(null);
+  const [activeDrill, setActiveDrill] = useState<DrillKey>(null);
+
+  function openDrill(key: DrillKey) {
+    setActiveDrill(prev => prev === key ? null : key);
+  }
 
   function toggleSection(key: string) {
     setOpenSections(s => ({ ...s, [key]: !s[key] }));
@@ -433,6 +440,8 @@ export default function PortfolioSummary() {
             sub={`${totalCount} positions`}
             icon={DollarSign}
             accent={ACCENT}
+            onClick={() => openDrill("cost")}
+            active={activeDrill === "cost"}
           />
           <KpiCard
             label="Fair Value"
@@ -440,6 +449,8 @@ export default function PortfolioSummary() {
             sub={`MOIC ${grandMOIC.toFixed(2)}x`}
             icon={BarChart3}
             accent="#0CA678"
+            onClick={() => openDrill("fv")}
+            active={activeDrill === "fv"}
           />
           <KpiCard
             label="Unrealised G/L"
@@ -447,6 +458,8 @@ export default function PortfolioSummary() {
             sub={grandCost > 0 ? `${((grandGL / grandCost) * 100).toFixed(1)}% return` : undefined}
             icon={TrendingUp}
             accent={grandGL >= 0 ? "#0CA678" : "#FA5252"}
+            onClick={() => openDrill("gl")}
+            active={activeDrill === "gl"}
           />
           <KpiCard
             label="Marks"
@@ -454,8 +467,8 @@ export default function PortfolioSummary() {
             sub={staleCount > 0 ? `${staleCount} stale (90d+)` : "All marks current"}
             icon={Clock}
             accent={staleCount > 0 ? "#FA5252" : "#0CA678"}
-            onClick={() => setFilter(f => f === "stale" ? "all" : "stale")}
-            active={filter === "stale"}
+            onClick={() => openDrill("marks")}
+            active={activeDrill === "marks"}
           />
         </div>
 
@@ -626,6 +639,206 @@ export default function PortfolioSummary() {
           qc.invalidateQueries({ queryKey: ["/api/investments", "portfolio-summary"] });
         }}
       />
+
+      {/* KPI Drill-down Sheets */}
+      <PortfolioDrillSheet
+        drillKey={activeDrill}
+        onClose={() => setActiveDrill(null)}
+        allRows={[...delawareInvs, ...ycInvs, ...otherInvs]}
+        grandCost={grandCost}
+        grandFV={grandFV}
+        grandGL={grandGL}
+        markedCount={markedCount}
+        staleCount={staleCount}
+        totalCount={totalCount}
+      />
     </div>
+  );
+}
+
+// ── Portfolio Drill Sheet ──────────────────────────────────────────────────────
+
+function PortfolioDrillSheet({
+  drillKey, onClose, allRows,
+  grandCost, grandFV, grandGL, markedCount, staleCount, totalCount,
+}: {
+  drillKey: DrillKey;
+  onClose: () => void;
+  allRows: any[];
+  grandCost: number; grandFV: number; grandGL: number;
+  markedCount: number; staleCount: number; totalCount: number;
+}) {
+  const open = drillKey !== null;
+
+  const config: Record<NonNullable<DrillKey>, {
+    title: string; subtitle: string; accent: string;
+    rows: any[]; cols: { label: string; getValue: (r: any) => string; right?: boolean; accent?: (r: any) => string }[];
+  }> = {
+    cost: {
+      title: "Total Cost Breakdown",
+      subtitle: `${totalCount} positions · sorted by cost`,
+      accent: ACCENT,
+      rows: [...allRows].sort((a, b) => Number(b.cost_basis ?? 0) - Number(a.cost_basis ?? 0)),
+      cols: [
+        { label: "Company",  getValue: r => r.company_name ?? "—" },
+        { label: "Vehicle",  getValue: r => r._vehicle ?? r.entities?.short_code ?? "—" },
+        { label: "Cost",     getValue: r => fmtUsd(Number(r.cost_basis ?? 0)), right: true },
+        { label: "% of Total", getValue: r => grandCost > 0 ? ((Number(r.cost_basis ?? 0) / grandCost) * 100).toFixed(1) + "%" : "—", right: true },
+      ],
+    },
+    fv: {
+      title: "Fair Value Breakdown",
+      subtitle: `MOIC ${grandCost > 0 ? (grandFV / grandCost).toFixed(2) : "1.00"}x across ${totalCount} positions`,
+      accent: "#0CA678",
+      rows: [...allRows].sort((a, b) => Number(b.current_fair_value ?? 0) - Number(a.current_fair_value ?? 0)),
+      cols: [
+        { label: "Company",  getValue: r => r.company_name ?? "—" },
+        { label: "Vehicle",  getValue: r => r._vehicle ?? r.entities?.short_code ?? "—" },
+        { label: "Cost",     getValue: r => fmtUsd(Number(r.cost_basis ?? 0)), right: true },
+        { label: "Fair Value", getValue: r => fmtUsd(Number(r.current_fair_value ?? r.cost_basis ?? 0)), right: true },
+        { label: "MOIC", getValue: r => {
+          const c = Number(r.cost_basis ?? 0);
+          const fv = Number(r.current_fair_value ?? c);
+          return c > 0 ? (fv / c).toFixed(2) + "x" : "—";
+        }, right: true, accent: r => {
+          const c = Number(r.cost_basis ?? 0);
+          const fv = Number(r.current_fair_value ?? c);
+          return c > 0 && fv > c ? "#0CA678" : c > 0 && fv < c ? "#FA5252" : MUTED;
+        }},
+      ],
+    },
+    gl: {
+      title: "Unrealised G / L",
+      subtitle: `${grandGL >= 0 ? "+" : ""}${fmtUsd(grandGL, true)} total · ${grandCost > 0 ? ((grandGL / grandCost) * 100).toFixed(1) : "0"}% return`,
+      accent: grandGL >= 0 ? "#0CA678" : "#FA5252",
+      rows: [...allRows].sort((a, b) => {
+        const glA = Number(a.current_fair_value ?? a.cost_basis ?? 0) - Number(a.cost_basis ?? 0);
+        const glB = Number(b.current_fair_value ?? b.cost_basis ?? 0) - Number(b.cost_basis ?? 0);
+        return glB - glA;
+      }),
+      cols: [
+        { label: "Company", getValue: r => r.company_name ?? "—" },
+        { label: "Vehicle", getValue: r => r._vehicle ?? r.entities?.short_code ?? "—" },
+        { label: "Cost",    getValue: r => fmtUsd(Number(r.cost_basis ?? 0)), right: true },
+        { label: "G / L",  getValue: r => {
+          const gl = Number(r.current_fair_value ?? r.cost_basis ?? 0) - Number(r.cost_basis ?? 0);
+          return (gl >= 0 ? "+" : "") + fmtUsd(gl);
+        }, right: true, accent: r => {
+          const gl = Number(r.current_fair_value ?? r.cost_basis ?? 0) - Number(r.cost_basis ?? 0);
+          return gl > 0 ? "#0CA678" : gl < 0 ? "#FA5252" : MUTED;
+        }},
+        { label: "Return", getValue: r => {
+          const c = Number(r.cost_basis ?? 0);
+          const gl = Number(r.current_fair_value ?? c) - c;
+          return c > 0 ? ((gl / c) * 100).toFixed(1) + "%" : "—";
+        }, right: true, accent: r => {
+          const c = Number(r.cost_basis ?? 0);
+          const gl = Number(r.current_fair_value ?? c) - c;
+          return c > 0 && gl > 0 ? "#0CA678" : c > 0 && gl < 0 ? "#FA5252" : MUTED;
+        }},
+      ],
+    },
+    marks: {
+      title: "Valuation Marks",
+      subtitle: `${markedCount} marked · ${staleCount} stale (90d+) · ${totalCount - markedCount} at cost`,
+      accent: staleCount > 0 ? "#FA5252" : "#0CA678",
+      rows: [...allRows].sort((a, b) => {
+        // Stale first, then marked, then at cost
+        const staleA = isStale(a.fair_value_date, Number(a.cost_basis ?? 0)) ? 0 : a.fair_value_date ? 1 : 2;
+        const staleB = isStale(b.fair_value_date, Number(b.cost_basis ?? 0)) ? 0 : b.fair_value_date ? 1 : 2;
+        return staleA - staleB;
+      }),
+      cols: [
+        { label: "Company",  getValue: r => r.company_name ?? "—" },
+        { label: "Vehicle",  getValue: r => r._vehicle ?? r.entities?.short_code ?? "—" },
+        { label: "Status", getValue: r => {
+          if (isStale(r.fair_value_date, Number(r.cost_basis ?? 0))) return "Stale";
+          if (r.fair_value_date) return "Marked";
+          return "At Cost";
+        }, accent: r => {
+          if (isStale(r.fair_value_date, Number(r.cost_basis ?? 0))) return "#FA5252";
+          if (r.fair_value_date) return "#0CA678";
+          return "#E67700";
+        }},
+        { label: "Basis",   getValue: r => r.valuation_basis ?? "—" },
+        { label: "As At",   getValue: r => fmtDate(r.fair_value_date) },
+        { label: "Fair Value", getValue: r => fmtUsd(Number(r.current_fair_value ?? r.cost_basis ?? 0)), right: true },
+      ],
+    },
+  };
+
+  if (!drillKey || !config[drillKey]) return null;
+  const { title, subtitle, accent, rows, cols } = config[drillKey];
+
+  return (
+    <Sheet open={open} onOpenChange={v => !v && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto p-0">
+        <SheetHeader className="px-6 pt-6 pb-4 border-b" style={{ borderColor: BORDER }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <SheetTitle className="text-base font-semibold" style={{ color: TEXT }}>{title}</SheetTitle>
+              <p className="text-xs mt-0.5" style={{ color: MUTED }}>{subtitle}</p>
+            </div>
+            <button onClick={onClose} className="rounded-md p-1 hover:bg-black/5 transition-colors">
+              <X size={16} style={{ color: MUTED }} />
+            </button>
+          </div>
+        </SheetHeader>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: "hsl(var(--muted)/0.5)", borderBottom: `1px solid ${BORDER}` }}>
+                {cols.map(c => (
+                  <th
+                    key={c.label}
+                    className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wide ${c.right ? "text-right" : "text-left"}`}
+                    style={{ color: MUTED }}
+                  >
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr
+                  key={r.id ?? r._yc_deal_id ?? i}
+                  className="border-b transition-colors hover:bg-black/[0.02]"
+                  style={{ borderColor: BORDER }}
+                >
+                  {cols.map(c => {
+                    const val = c.getValue(r);
+                    const color = c.accent ? c.accent(r) : TEXT;
+                    return (
+                      <td
+                        key={c.label}
+                        className={`px-4 py-2.5 font-mono text-xs ${c.right ? "text-right" : ""}`}
+                        style={{ color }}
+                      >
+                        {c.label === "Company" ? (
+                          <span className="font-sans font-medium" style={{ color: TEXT }}>{val}</span>
+                        ) : val}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Summary footer */}
+        <div className="px-6 py-4 border-t" style={{ borderColor: BORDER, background: "hsl(var(--muted)/0.3)" }}>
+          <div className="flex items-center justify-between text-xs font-semibold" style={{ color: TEXT }}>
+            <span>{rows.length} positions</span>
+            {drillKey === "cost" && <span style={{ color: accent }}>{fmtUsd(grandCost)}</span>}
+            {drillKey === "fv"   && <span style={{ color: accent }}>{fmtUsd(grandFV)} · MOIC {grandCost > 0 ? (grandFV / grandCost).toFixed(2) : "1.00"}x</span>}
+            {drillKey === "gl"   && <span style={{ color: accent }}>{grandGL >= 0 ? "+" : ""}{fmtUsd(grandGL)} · {grandCost > 0 ? ((grandGL / grandCost) * 100).toFixed(1) : "0"}% return</span>}
+            {drillKey === "marks" && <span style={{ color: accent }}>{markedCount} marked · {staleCount} stale</span>}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
