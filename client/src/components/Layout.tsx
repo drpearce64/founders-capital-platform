@@ -83,7 +83,6 @@ const ycSections: Record<string, string> = {
 // ── Other Investments nav ─────────────────────────────────────────────────────
 const otherNav = [
   { href: "/other-investments",  label: "Portfolio",          icon: LayoutDashboard, section: "overview" },
-  { href: "/fc-investments",     label: "FC Investments",     icon: Briefcase,       section: "overview" },
   { href: "/group-structure",    label: "Group Structure",    icon: Network,         section: "group" },
   { href: "/investor-register",  label: "Investor Register",  icon: BookUser,        section: "group" },
   { href: "/documents",          label: "Documents",          icon: FolderOpen,      section: "admin" },
@@ -96,20 +95,37 @@ const otherSections: Record<string, string> = {
   admin:    "Administration",
 };
 
+// ── FC Investments nav ────────────────────────────────────────────────────────
+const fcInvestmentsNav = [
+  { href: "/fc-investments",     label: "FC Investments",     icon: Briefcase,       section: "overview" },
+  { href: "/group-structure",    label: "Group Structure",    icon: Network,         section: "group" },
+  { href: "/investor-register",  label: "Investor Register",  icon: BookUser,        section: "group" },
+  { href: "/documents",          label: "Documents",          icon: FolderOpen,      section: "admin" },
+  { href: "/audit-log",          label: "Audit Log",          icon: Shield,          section: "admin" },
+];
+
+const fcInvestmentsSections: Record<string, string> = {
+  overview: "Overview",
+  group:    "Group",
+  admin:    "Administration",
+};
+
 // ── Jurisdiction config ───────────────────────────────────────────────────────
-type Jurisdiction = "delaware" | "cayman" | "yc" | "other";
+type Jurisdiction = "delaware" | "cayman" | "yc" | "other" | "fc";
 
 const JURISDICTIONS: Record<Jurisdiction, { flag: string; label: string; sub: string; homeRoute: string }> = {
   delaware: { flag: "🇺🇸", label: "Delaware",    sub: "Series LP",     homeRoute: "/" },
   cayman:   { flag: "🇰🇾", label: "Cayman",      sub: "Exempted LP",   homeRoute: "/cayman" },
   yc:       { flag: "🇺🇸", label: "YC",          sub: "Portfolio",     homeRoute: "/yc-portfolio" },
   other:    { flag: "🌐",  label: "Other",       sub: "Investments",   homeRoute: "/other-investments" },
+  fc:       { flag: "💼",  label: "FC",          sub: "Investments",   homeRoute: "/fc-investments" },
 };
 
 function detectJurisdiction(path: string): Jurisdiction {
   if (path.startsWith("/cayman"))             return "cayman";
   if (path.startsWith("/yc-portfolio"))       return "yc";
-  if (path.startsWith("/other-investments") || path.startsWith("/fc-investments")) return "other";
+  if (path.startsWith("/other-investments"))  return "other";
+  if (path.startsWith("/fc-investments"))     return "fc";
   return "delaware";
 }
 
@@ -125,11 +141,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const nav      = jurisdiction === "delaware" ? delawareNav
                  : jurisdiction === "cayman"   ? caymanNav
                  : jurisdiction === "yc"       ? ycNav
-                 : otherNav;
+                 : jurisdiction === "other"    ? otherNav
+                 : fcInvestmentsNav;
   const sections = jurisdiction === "delaware" ? delawareSections
                  : jurisdiction === "cayman"   ? caymanSections
                  : jurisdiction === "yc"       ? ycSections
-                 : otherSections;
+                 : jurisdiction === "other"    ? otherSections
+                 : fcInvestmentsSections;
   const jInfo    = JURISDICTIONS[jurisdiction];
 
   return (
@@ -174,8 +192,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             View
           </p>
-          <div className="grid grid-cols-2 gap-1">
-            {(["delaware", "cayman", "yc", "other"] as Jurisdiction[]).map((key) => {
+          <div className="grid grid-cols-3 gap-1">
+            {(["delaware", "cayman", "yc", "other", "fc"] as Jurisdiction[]).map((key) => {
               const info   = JURISDICTIONS[key];
               const active = jurisdiction === key;
               return (
