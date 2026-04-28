@@ -1224,13 +1224,16 @@ Founders Capital`;
     // In dev: __dirname = server/, script at ../scripts/airtable_sync.js
     // In prod: __dirname = dist/,   script at scripts/airtable_sync.js (copied by build)
     const scriptPath = path.join(__dirname, "scripts", "airtable_sync.js");
+    const SUPA_URL = process.env.SUPABASE_URL || "https://yoyrwrdzivygufbzckdv.supabase.co";
+    const SUPA_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
+
     const child = fork(scriptPath, [], {
       env: {
         ...process.env,
-        AIRTABLE_PAT:     process.env.AIRTABLE_PAT     ?? "",
-        AIRTABLE_BASE_ID: process.env.AIRTABLE_BASE_ID ?? "appXSAE1n2PvdCQB1",
-        SUPABASE_URL:     process.env.SUPABASE_URL     ?? "",
-        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ?? "",
+        AIRTABLE_PAT:      process.env.AIRTABLE_PAT     ?? "",
+        AIRTABLE_BASE_ID:  process.env.AIRTABLE_BASE_ID ?? "appXSAE1n2PvdCQB1",
+        SUPABASE_URL:      SUPA_URL,
+        SUPABASE_ANON_KEY: SUPA_KEY,
       },
       detached: false,
       silent: true,
@@ -1248,7 +1251,7 @@ Founders Capital`;
         description: `Airtable sync finished with exit code ${code}`,
         actor:       "system",
         new_values:  { exit_code: code, output: output.slice(-2000) },
-      });
+      }).catch(() => {});
     });
 
     res.json({ status: "sync_started", message: "Airtable sync running in background" });
