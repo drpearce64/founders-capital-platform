@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Search } from "lucide-react";
 import {
-  TrendingUp, DollarSign, Building2, ExternalLink, Layers, Zap,
+  TrendingUp, DollarSign, Building2, ExternalLink, Layers, Zap, ArrowUpRight,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface YCDeal {
@@ -117,17 +118,27 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
-function KpiCard({ icon: Icon, label, value, sub }: { icon: any; label: string; value: string; sub?: string }) {
+function KpiCard({ icon: Icon, label, value, sub, onClick }: { icon: any; label: string; value: string; sub?: string; onClick?: () => void }) {
   return (
     <div
-      className="rounded-xl border p-5 flex flex-col gap-2"
-      style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
+      onClick={onClick}
+      className="rounded-xl border p-5 flex flex-col gap-2 transition-all duration-150"
+      style={{
+        background: "hsl(var(--card))",
+        borderColor: "hsl(var(--border))",
+        cursor: onClick ? "pointer" : "default",
+      }}
+      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLElement).style.borderColor = "hsl(231 70% 54% / 0.5)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "hsl(var(--border))"; }}
     >
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>
           {label}
         </span>
-        <Icon size={16} style={{ color: "hsl(var(--muted-foreground))" }} />
+        <div className="flex items-center gap-1.5">
+          {onClick && <ArrowUpRight size={11} style={{ color: "hsl(var(--muted-foreground))", opacity: 0.5 }} />}
+          <Icon size={16} style={{ color: "hsl(var(--muted-foreground))" }} />
+        </div>
       </div>
       <div className="text-xl font-semibold font-mono" style={{ color: "hsl(var(--foreground))" }}>
         {value}
@@ -141,6 +152,292 @@ function KpiCard({ icon: Icon, label, value, sub }: { icon: any; label: string; 
   );
 }
 
+// ── Drill-down drawer ─────────────────────────────────────────────────────────
+type YCDrillKey = "companies" | "fc_deployed" | "spv_size" | "moic" | "followon";
+
+function YCDrillContent({ drillKey, deals }: { drillKey: YCDrillKey; deals: YCDeal[] }) {
+  const TH = "text-xs font-medium uppercase tracking-wider pb-2 text-left whitespace-nowrap";
+  const TD = "py-2.5 text-xs";
+  const thStyle = { color: "hsl(var(--muted-foreground))", borderBottom: "1px solid hsl(var(--border))" };
+
+  if (drillKey === "companies") {
+    const sorted = [...deals].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className={TH} style={thStyle}>Company</th>
+              <th className={TH} style={thStyle}>Cohort</th>
+              <th className={TH} style={thStyle}>Stage</th>
+              <th className={TH} style={thStyle}>Location</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "center" }}>Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {sorted.map(d => (
+              <tr key={d.id}>
+                <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                  <div className="font-medium">{d.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim()}</div>
+                  {d.description && <div className="text-xs mt-0.5 max-w-[200px] truncate" style={{ color: "hsl(var(--muted-foreground))" }}>{d.description}</div>}
+                </td>
+                <td className={TD}><BatchPill batch={d.batch} /></td>
+                <td className={TD} style={{ color: "hsl(var(--muted-foreground))" }}>{d.stage || "—"}</td>
+                <td className={TD} style={{ color: "hsl(var(--muted-foreground))" }}>{d.location || "—"}</td>
+                <td className={TD + " text-center"}><StatusBadge status={d.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+              <td className="py-2.5 text-sm font-semibold" colSpan={5} style={{ color: "hsl(var(--foreground))" }}>
+                {sorted.length} companies
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  if (drillKey === "fc_deployed") {
+    const sorted = [...deals].sort((a, b) => (b.fc_investment ?? 0) - (a.fc_investment ?? 0));
+    const total = sorted.reduce((s, d) => s + (d.fc_investment ?? 0), 0);
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className={TH} style={thStyle}>Company</th>
+              <th className={TH} style={thStyle}>Cohort</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>FC Invested</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>% of Total</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Currency</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {sorted.map(d => (
+              <tr key={d.id}>
+                <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                  <span className="font-medium">{d.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim()}</span>
+                </td>
+                <td className={TD}><BatchPill batch={d.batch} /></td>
+                <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>
+                  {d.fc_investment > 0 ? fmtUsd(d.fc_investment) : "—"}
+                </td>
+                <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--muted-foreground))" }}>
+                  {total > 0 && d.fc_investment > 0 ? ((d.fc_investment / total) * 100).toFixed(1) + "%" : "—"}
+                </td>
+                <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--muted-foreground))" }}>
+                  {d.currency || "USD"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+              <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>Total</td>
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmtUsd(total)}</td>
+              <td colSpan={2} />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  if (drillKey === "spv_size") {
+    const sorted = [...deals].sort((a, b) => (b.usd_investment_value ?? 0) - (a.usd_investment_value ?? 0));
+    const totalSpv = sorted.reduce((s, d) => s + (d.usd_investment_value ?? 0), 0);
+    const totalFc  = sorted.reduce((s, d) => s + (d.fc_investment ?? 0), 0);
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className={TH} style={thStyle}>Company</th>
+              <th className={TH} style={thStyle}>Cohort</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>SPV Total</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>FC Capital</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>FC %</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {sorted.map(d => {
+              const fcPct = d.usd_investment_value > 0 ? (d.fc_investment / d.usd_investment_value) * 100 : 0;
+              return (
+                <tr key={d.id}>
+                  <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                    <span className="font-medium">{d.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim()}</span>
+                  </td>
+                  <td className={TD}><BatchPill batch={d.batch} /></td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>{fmtUsd(d.usd_investment_value)}</td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--muted-foreground))" }}>{d.fc_investment > 0 ? fmtUsd(d.fc_investment) : "—"}</td>
+                  <td className={TD + " text-right"}>
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border))" }}>
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(fcPct, 100)}%`, background: "#3B5BDB" }} />
+                      </div>
+                      <span className="font-mono text-xs w-9 text-right" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        {fcPct > 0 ? fcPct.toFixed(1) + "%" : "—"}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+              <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>Total</td>
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmtUsd(totalSpv)}</td>
+              <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{fmtUsd(totalFc)}</td>
+              <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>
+                {totalSpv > 0 ? ((totalFc / totalSpv) * 100).toFixed(1) + "% avg" : "—"}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  if (drillKey === "moic") {
+    const sorted = [...deals].sort((a, b) => (b.moic ?? 0) - (a.moic ?? 0));
+    const totalCost = sorted.reduce((s, d) => s + (d.usd_investment_value ?? 0), 0);
+    const totalLive = sorted.reduce((s, d) => s + (d.live_market_value_usd ?? d.usd_investment_value ?? 0), 0);
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className={TH} style={thStyle}>Company</th>
+              <th className={TH} style={thStyle}>Cohort</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>SPV Cost</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Live Value</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>MOIC</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Gain / Loss</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {sorted.map(d => {
+              const cost = d.usd_investment_value ?? 0;
+              const live = d.live_market_value_usd ?? cost;
+              const gain = live - cost;
+              const moic = d.moic ?? (cost > 0 ? live / cost : 1);
+              return (
+                <tr key={d.id}>
+                  <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                    <span className="font-medium">{d.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim()}</span>
+                  </td>
+                  <td className={TD}><BatchPill batch={d.batch} /></td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>{fmtUsd(cost)}</td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>{fmtUsd(live)}</td>
+                  <td className={TD + " font-mono text-right font-semibold"} style={{ color: moic >= 2 ? "#0CA678" : moic < 1 ? "#FA5252" : "hsl(var(--foreground))" }}>
+                    {fmtMoic(moic)}
+                  </td>
+                  <td className={TD + " font-mono text-right"} style={{ color: gain >= 0 ? "#0CA678" : "#FA5252" }}>
+                    {gain >= 0 ? "+" : ""}{fmtUsd(gain)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+              <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>Total</td>
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmtUsd(totalCost)}</td>
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmtUsd(totalLive)}</td>
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: totalLive >= totalCost ? "#0CA678" : "#FA5252" }}>
+                {totalCost > 0 ? (totalLive / totalCost).toFixed(2) + "x" : "—"}
+              </td>
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: totalLive >= totalCost ? "#0CA678" : "#FA5252" }}>
+                {totalLive - totalCost >= 0 ? "+" : ""}{fmtUsd(totalLive - totalCost)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  if (drillKey === "followon") {
+    const followons = [...deals].filter(d => d.has_followon).sort((a, b) => {
+      // Sort by date desc, then amount desc
+      if (a.followon_date && b.followon_date) return b.followon_date.localeCompare(a.followon_date);
+      if (a.followon_date) return -1;
+      if (b.followon_date) return 1;
+      return (b.followon_amount_usd ?? 0) - (a.followon_amount_usd ?? 0);
+    });
+    const totalRaised = followons.reduce((s, d) => s + (d.followon_amount_usd ?? 0), 0);
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className={TH} style={thStyle}>Company</th>
+              <th className={TH} style={thStyle}>Cohort</th>
+              <th className={TH} style={thStyle}>Round</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Amount</th>
+              <th className={TH} style={thStyle}>Lead Investor</th>
+              <th className={TH} style={thStyle}>Date</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "center" }}>Source</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {followons.map(d => (
+              <tr key={d.id}>
+                <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                  <span className="font-medium">{d.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim()}</span>
+                </td>
+                <td className={TD}><BatchPill batch={d.batch} /></td>
+                <td className={TD}>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                    style={{ background: "hsl(231 70% 54% / 0.15)", color: "hsl(231 70% 72%)" }}>
+                    <Zap size={9} />
+                    {d.followon_round ?? "Round"}
+                  </span>
+                </td>
+                <td className={TD + " font-mono text-right font-semibold"} style={{ color: "#0CA678" }}>
+                  {d.followon_amount_usd ? `$${(d.followon_amount_usd / 1e6).toFixed(1)}M` : "—"}
+                </td>
+                <td className={TD} style={{ color: "hsl(var(--muted-foreground))" }}>
+                  {d.followon_lead_investor ? d.followon_lead_investor.split(",")[0].trim() : "—"}
+                </td>
+                <td className={TD + " font-mono"} style={{ color: "hsl(var(--muted-foreground))" }}>
+                  {d.followon_date ?? "—"}
+                </td>
+                <td className={TD + " text-center"}>
+                  {d.followon_source ? (
+                    <a href={d.followon_source} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs hover:opacity-70"
+                      style={{ color: "hsl(var(--primary))" }}>
+                      <ExternalLink size={11} />
+                    </a>
+                  ) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+              <td className="py-2.5 text-sm font-semibold" colSpan={3} style={{ color: "hsl(var(--foreground))" }}>
+                {followons.length} follow-on{followons.length !== 1 ? "s" : ""}
+              </td>
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "#0CA678" }}>
+                {totalRaised > 0 ? `$${(totalRaised / 1e6).toFixed(1)}M` : "—"}
+              </td>
+              <td colSpan={3} />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function YCDashboard() {
   const [batchFilter, setBatchFilter] = useState<string>("all");
@@ -148,6 +445,15 @@ export default function YCDashboard() {
   const [followonOnly, setFollowonOnly] = useState(false);
   const [sortField, setSortField] = useState<keyof YCDeal>("batch");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [activeDrill, setActiveDrill] = useState<YCDrillKey | null>(null);
+
+  const DRILL_TITLES: Record<YCDrillKey, { title: string; subtitle: string }> = {
+    companies:   { title: "Portfolio Companies",  subtitle: "All YC deals" },
+    fc_deployed: { title: "FC Deployed",          subtitle: "Founders Capital's own capital invested" },
+    spv_size:    { title: "Total SPV Size",        subtitle: "All investor capital across YC SPVs" },
+    moic:        { title: "Portfolio MOIC",        subtitle: "Live value vs cost — sorted by MOIC" },
+    followon:    { title: "Follow-on Rounds",      subtitle: "Portfolio companies with subsequent funding" },
+  };
 
   const { data, isLoading, error } = useQuery<{ deals: YCDeal[]; total: number }>({
     queryKey: ["/api/yc-deals"],
@@ -377,6 +683,29 @@ export default function YCDashboard() {
             </div>
           )}
 
+          {/* KPI Drill Sheet */}
+          <Sheet open={activeDrill !== null} onOpenChange={open => { if (!open) setActiveDrill(null); }}>
+            <SheetContent side="right" className="w-[640px] sm:max-w-[640px] overflow-y-auto">
+              {activeDrill && (
+                <>
+                  <SheetHeader className="mb-6">
+                    <SheetTitle className="text-base">{DRILL_TITLES[activeDrill].title}</SheetTitle>
+                    <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      {DRILL_TITLES[activeDrill].subtitle}
+                      {batchFilter !== "all" && (
+                        <span className="ml-2 px-2 py-0.5 rounded text-xs"
+                          style={{ background: "hsl(231 70% 54% / 0.12)", color: "hsl(231 70% 65%)" }}>
+                          {batchLabel(batchFilter)}
+                        </span>
+                      )}
+                    </p>
+                  </SheetHeader>
+                  <YCDrillContent drillKey={activeDrill} deals={filtered} />
+                </>
+              )}
+            </SheetContent>
+          </Sheet>
+
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <KpiCard
@@ -384,27 +713,31 @@ export default function YCDashboard() {
               label="Companies"
               value={String(kpis.companies)}
               sub={batchFilter === "all" ? `${batches.length} cohorts` : batchLabel(batchFilter)}
+              onClick={() => setActiveDrill("companies")}
             />
             <KpiCard
               icon={DollarSign}
               label="FC Deployed"
               value={fmtUsd(kpis.totalFCDeployed)}
               sub="FC's own capital"
+              onClick={() => setActiveDrill("fc_deployed")}
             />
             <KpiCard
               icon={Layers}
               label="Total SPV Size"
               value={fmtUsd(kpis.totalSPVSize)}
               sub="All investor capital"
+              onClick={() => setActiveDrill("spv_size")}
             />
             <KpiCard
               icon={TrendingUp}
               label="Portfolio MOIC"
               value={fmtMoic(kpis.portfolioMoic)}
               sub="Live / cost"
+              onClick={() => setActiveDrill("moic")}
             />
             <div
-              onClick={() => setFollowonOnly(f => !f)}
+              onClick={() => setActiveDrill("followon")}
               className="rounded-xl border p-5 flex flex-col gap-2 cursor-pointer transition-all"
               style={{
                 background: followonOnly ? "hsl(231 70% 54% / 0.18)" : "hsl(var(--card))",
@@ -416,13 +749,16 @@ export default function YCDashboard() {
                 <span className="text-xs font-medium uppercase tracking-wider" style={{ color: followonOnly ? "hsl(231 70% 72%)" : "hsl(var(--muted-foreground))" }}>
                   Follow-on Rounds
                 </span>
-                <Zap size={16} style={{ color: followonOnly ? "hsl(231 70% 72%)" : "hsl(var(--muted-foreground))" }} />
+                <div className="flex items-center gap-1.5">
+                  <ArrowUpRight size={11} style={{ color: "hsl(var(--muted-foreground))", opacity: 0.5 }} />
+                  <Zap size={16} style={{ color: followonOnly ? "hsl(231 70% 72%)" : "hsl(var(--muted-foreground))" }} />
+                </div>
               </div>
               <div className="text-xl font-semibold font-mono" style={{ color: followonOnly ? "hsl(231 70% 80%)" : "hsl(var(--foreground))" }}>
                 {kpis.followonCount}
               </div>
               <div className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                {kpis.followonTotalUSD > 0 ? `$${(kpis.followonTotalUSD / 1e6).toFixed(1)}M raised · ` : ""}{followonOnly ? "click to show all" : "click to filter"}
+                {kpis.followonTotalUSD > 0 ? `$${(kpis.followonTotalUSD / 1e6).toFixed(1)}M raised · ` : ""}click to drill down
               </div>
             </div>
           </div>
