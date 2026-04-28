@@ -107,6 +107,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Investments ────────────────────────────────────────────────────────────
 
+  // Returns investor count per entity_id: { [entity_id]: count }
+  app.get("/api/investor-counts", async (_req, res) => {
+    const { data, error } = await supabase
+      .from("investor_commitments")
+      .select("entity_id")
+      .is("archived_at", null);
+    if (error) return res.status(500).json({ error: error.message });
+    const counts: Record<string, number> = {};
+    for (const row of data || []) {
+      if (row.entity_id) counts[row.entity_id] = (counts[row.entity_id] || 0) + 1;
+    }
+    res.json(counts);
+  });
+
   app.get("/api/investments", async (req, res) => {
     const { entity_id } = req.query;
     let query = supabase
