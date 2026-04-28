@@ -244,7 +244,7 @@ async function syncDeals() {
       short_code,
       entity_type:       "series_spv",
       jurisdiction:      "Delaware",
-      status:            f["Status"] === "Closed" ? "closed" : "active",
+      status:            f["Status"] === "Closed" ? "winding_down" : "active",
       formation_date:    safeDate(f["Closing Date"]),
       currency:          f["Investment Currency"] ? String(f["Investment Currency"]) : "USD",
       carry_rate:        safeNum(f["Carry"]) ?? 0.20,
@@ -407,8 +407,8 @@ async function syncCommitments() {
     // Map fund received status
     const inv_status   = firstStr(f["Status (from Investments)"]);
     const commit_status =
-      inv_status === "Funds received" ? "funded"   :
-      inv_status === "Sent"           ? "called"   : "committed";
+      inv_status === "Funds received" ? "fully_drawn" :
+      inv_status === "Sent"           ? "called"      : "active";
 
     const committed  = safeNum(f["Final Investment Value"]) ?? 0;
     const received   = safeNum(firstStr(f["Actually Received (from Investments)"])) ?? 0;
