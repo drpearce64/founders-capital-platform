@@ -129,58 +129,57 @@ async function syncMembers() {
 
   console.log(`  Fetched ${records.length} members from Airtable`);
 
+  // Build rows, skipping rejects / blank records
+  const rows = [];
   for (const rec of records) {
     const f = rec.fields;
-    const airtable_id = rec.id;
-
-    // Skip unapproved / rejected members
-    const status = f["Status"];
-    if (status === "Rejected") {
-      stats.investors.skipped++;
-      continue;
-    }
-
+    if (f["Status"] === "Rejected") { stats.investors.skipped++; continue; }
     const email     = f["Email"] ? String(f["Email"]).toLowerCase().trim() : null;
     const full_name = f["Full name"] ? String(f["Full name"]).trim() : null;
-
-    if (!email && !full_name) {
-      stats.investors.skipped++;
-      continue;
-    }
-
-    const kyc_raw   = f["KYC Status"];
-    const kyc_status =
-      kyc_raw === "Completed" ? "approved" :
-      kyc_raw === "Pending"   ? "pending"  : "pending";
-
-    const row = {
-      airtable_id,
-      full_name:     full_name ?? email,
+    if (!email && !full_name) { stats.investors.skipped++; continue; }
+    const kyc_raw = f["KYC Status"];
+    rows.push({
+      airtable_id:  rec.id,
+      full_name:    full_name ?? email,
       email,
-      phone:         f["Phone"]        ? String(f["Phone"]).trim()  : null,
-      investor_type: "individual",     // Members are always individuals in Airtable
-      kyc_status,
-      onboarded_at:  safeDate(f["CreatedAt"]) ?? new Date().toISOString().split("T")[0],
-    };
+      phone:        f["Phone"] ? String(f["Phone"]).trim() : null,
+      investor_type: "individual",
+      kyc_status:   kyc_raw === "Completed" ? "approved" : "pending",
+      onboarded_at: safeDate(f["CreatedAt"]) ?? new Date().toISOString().split("T")[0],
+    });
+  }
 
+  // Batch upsert in chunks of 200 to avoid payload limits
+  const CHUNK = 200;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
     try {
       const { error } = await supabase
         .from("investors")
-        .upsert(row, {
-          onConflict:        "airtable_id",
-          ignoreDuplicates:  false,
-        });
-
+        .upsert(chunk, { onConflict: "airtable_id", ignoreDuplicates: false });
       if (error) throw error;
-
-      stats.investors.upserted++;
-      await logSync("investors", airtable_id, "upsert", "ok");
+      stats.investors.upserted += chunk.length;
     } catch (err) {
-      stats.investors.errors++;
-      console.error(`  ✗ investor ${airtable_id}: ${err.message}`);
-      await logSync("investors", airtable_id, "upsert", "error", err.message);
+      // On batch failure fall back to individual upserts so we capture exact errors
+      for (const row of chunk) {
+        try {
+          const { error: e2 } = await supabase
+            .from("investors")
+            .upsert(row, { onConflict: "airtable_id", ignoreDuplicates: false });
+          if (e2) throw e2;
+          stats.investors.upserted++;
+        } catch (err2) {
+          stats.investors.errors++;
+          console.error(`  ✗ investor ${row.airtable_id}: ${err2.message}`);
+          await logSync("investors", row.airtable_id, "upsert", "error", err2.message);
+        }
+      }
     }
   }
+
+  // Single summary log entry instead of one per record
+  await logSync("investors", null, "batch_upsert", "ok",
+    `upserted:${stats.investors.upserted} skipped:${stats.investors.skipped} errors:${stats.investors.errors}`);
 
   console.log(`  ✓ investors — upserted: ${stats.investors.upserted}, skipped: ${stats.investors.skipped}, errors: ${stats.investors.errors}`);
 }
