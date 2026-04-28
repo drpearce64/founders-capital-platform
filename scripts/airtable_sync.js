@@ -98,6 +98,19 @@ function safeDate(val) {
   return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
 }
 
+function mapInstrumentType(val) {
+  if (!val) return "other";
+  const v = String(val).toLowerCase().replace(/\s+/g, "_");
+  // Map Airtable types to DB enum
+  if (v.includes("ordinary") || v === "equity" || v === "shares") return "ordinary_shares";
+  if (v.includes("preferred")) return "preferred_shares";
+  if (v.includes("convertible") || v.includes("note")) return "convertible_note";
+  if (v === "safe" || v.includes("safe")) return "safe";
+  if (v.includes("warrant")) return "warrant";
+  if (v.includes("loan") || v.includes("debt")) return "loan";
+  return "other";
+}
+
 // ── Counters ─────────────────────────────────────────────────────────────────
 
 const stats = {
@@ -296,7 +309,7 @@ async function syncDeals() {
       current_fair_value:  safeNum(f["Total Received"]) ?? 0,
       status:              f["Status"] === "Closed" ? "active" : "pending",
       stage:               f["Stage"] ? String(f["Stage"]).toLowerCase() : null,
-      instrument_type:     f["Type"] ? String(f["Type"]).toLowerCase() : "equity",
+      instrument_type:     mapInstrumentType(f["Type"]),
       notes:               deal_code ?? null,
     };
 
