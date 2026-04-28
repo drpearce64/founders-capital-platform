@@ -362,6 +362,21 @@ async function syncCommitments() {
 
   console.log(`  Fetched ${records.length} commitments from Airtable`);
 
+  // ── Phase 1: Build lookup maps (2 queries total instead of 2 per record) ──
+  const [{ data: allInvestors }, { data: allEntities }] = await Promise.all([
+    supabase.from("investors").select("id,airtable_id").not("airtable_id", "is", null),
+    supabase.from("entities").select("id,airtable_deal_id").not("airtable_deal_id", "is", null),
+  ]);
+
+  const investorMap = Object.fromEntries((allInvestors || []).map(r => [r.airtable_id, r.id]));
+  const entityMap   = Object.fromEntries((allEntities  || []).map(r => [r.airtable_deal_id, r.id]));
+
+  console.log(`  Resolved ${Object.keys(investorMap).length} investors, ${Object.keys(entityMap).length} entities from Supabase`);
+
+  // ── Phase 2: Build rows ────────────────────────────────────────────────────
+  const rows = [];
+  const skipLogs = [];
+
   for (const rec of records) {
     const f = rec.fields;
     const airtable_id = rec.id;
@@ -372,7 +387,6 @@ async function syncCommitments() {
       continue;
     }
 
-    // Resolve Supabase investor by airtable_id of member
     const member_airtable_id = firstStr(f["Member"]);
     const deal_airtable_id   = firstStr(f["Deal"]);
 
@@ -381,29 +395,15 @@ async function syncCommitments() {
       continue;
     }
 
-    // Look up investor
-    const { data: investor } = await supabase
-      .from("investors")
-      .select("id")
-      .eq("airtable_id", member_airtable_id)
-      .maybeSingle();
+    const investor_id = investorMap[member_airtable_id];
+    const entity_id   = entityMap[deal_airtable_id];
 
-    // Look up entity
-    const { data: entity } = await supabase
-      .from("entities")
-      .select("id")
-      .eq("airtable_deal_id", deal_airtable_id)
-      .maybeSingle();
-
-    if (!investor || !entity) {
-      // Referenced records not synced yet — skip gracefully
+    if (!investor_id || !entity_id) {
       stats.commitments.skipped++;
-      await logSync("investor_commitments", airtable_id, "skip",
-        "warning", `Missing investor(${member_airtable_id}) or entity(${deal_airtable_id})`);
+      skipLogs.push({ airtable_id, member_airtable_id, deal_airtable_id });
       continue;
     }
 
-    // Map fund received status
     const inv_status   = firstStr(f["Status (from Investments)"]);
     const commit_status =
       inv_status === "Funds received" ? "fully_drawn" :
@@ -413,10 +413,10 @@ async function syncCommitments() {
     const received   = safeNum(firstStr(f["Actually Received (from Investments)"])) ?? 0;
     const fee_amount = safeNum(f["Fee"]) ?? 0;
 
-    const row = {
+    rows.push({
       airtable_id,
-      entity_id:        entity.id,
-      investor_id:      investor.id,
+      entity_id,
+      investor_id,
       committed_amount: committed,
       called_amount:    fee_amount > 0 ? committed + fee_amount : committed,
       funded_amount:    received,
@@ -427,25 +427,43 @@ async function syncCommitments() {
         ? String(f["Wiring currency"]).includes("USD") ? "USD" : "GBP"
         : "USD",
       commitment_date:  safeDate(f["Created"]) ?? new Date().toISOString().split("T")[0],
-    };
+    });
+  }
 
+  // ── Phase 3: Batch upsert in chunks of 200 ────────────────────────────────
+  const CHUNK = 200;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
     try {
       const { error } = await supabase
         .from("investor_commitments")
-        .upsert(row, {
-          onConflict:       "airtable_id",
-          ignoreDuplicates: false,
-        });
-
+        .upsert(chunk, { onConflict: "airtable_id", ignoreDuplicates: false });
       if (error) throw error;
-
-      stats.commitments.upserted++;
-      await logSync("investor_commitments", airtable_id, "upsert", "ok");
+      stats.commitments.upserted += chunk.length;
     } catch (err) {
-      stats.commitments.errors++;
-      console.error(`  ✗ commitment ${airtable_id}: ${err.message}`);
-      await logSync("investor_commitments", airtable_id, "upsert", "error", err.message);
+      // Fall back to individual upserts to capture exact failures
+      for (const row of chunk) {
+        try {
+          const { error: e2 } = await supabase
+            .from("investor_commitments")
+            .upsert(row, { onConflict: "airtable_id", ignoreDuplicates: false });
+          if (e2) throw e2;
+          stats.commitments.upserted++;
+        } catch (err2) {
+          stats.commitments.errors++;
+          console.error(`  ✗ commitment ${row.airtable_id}: ${err2.message}`);
+          await logSync("investor_commitments", row.airtable_id, "upsert", "error", err2.message);
+        }
+      }
     }
+  }
+
+  // Single summary log (skips logged separately, keeps table clean)
+  await logSync("investor_commitments", null, "batch_upsert", "ok",
+    `upserted:${stats.commitments.upserted} skipped:${stats.commitments.skipped} errors:${stats.commitments.errors} skip_refs:${skipLogs.length}`);
+
+  if (skipLogs.length > 0) {
+    console.log(`  ⚠ ${skipLogs.length} commitments skipped — missing investor or entity reference`);
   }
 
   console.log(`  ✓ commitments — upserted: ${stats.commitments.upserted}, skipped: ${stats.commitments.skipped}, errors: ${stats.commitments.errors}`);
