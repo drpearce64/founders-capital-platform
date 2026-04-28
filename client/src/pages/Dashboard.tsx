@@ -179,9 +179,8 @@ export default function Dashboard() {
 
   // ── Computed metrics — always derived from filtered queries ─────────────────
   const filteredCommitments = (commitments as any[]).filter(c =>
-    // Delaware dashboard: series SPVs only (exclude Cayman and non-SPV entities)
-    !c.entities?.short_code?.startsWith("FC-CAYMAN") &&
-    c.entities?.entity_type === "series_spv"
+    // Delaware: exclude Cayman entities only
+    !c.entities?.short_code?.startsWith("FC-CAYMAN")
   );
 
   const totalCommitted  = filteredCommitments.reduce((s, c) => s + parseFloat(c.committed_amount || 0), 0);
@@ -190,11 +189,11 @@ export default function Dashboard() {
   const uncalled        = totalCommitted - totalCalled;
 
   const filteredInvestments = (investments as any[]).filter(i =>
-    !i.entities?.short_code?.startsWith("FC-CAYMAN") &&
-    i.entities?.entity_type === "series_spv"
+    i.entities?.short_code?.startsWith("FC-VECTOR")
   );
-  const totalCost = filteredInvestments.reduce((s, i) => s + parseFloat(i.cost_basis  || 0), 0);
-  const totalFV   = filteredInvestments.reduce((s, i) => s + parseFloat(i.current_fair_value || 0), 0);
+  const totalCost = filteredInvestments.reduce((s, i) => s + parseFloat(i.cost_basis || 0), 0);
+  // Fall back to cost_basis when fair value not yet marked
+  const totalFV   = filteredInvestments.reduce((s, i) => s + parseFloat(i.current_fair_value ?? i.cost_basis ?? 0), 0);
   const unrealised = totalFV - totalCost;
   const moic = totalCost > 0 ? totalFV / totalCost : 0;
   const activePositions = filteredInvestments.filter(i => i.status === "active").length;
