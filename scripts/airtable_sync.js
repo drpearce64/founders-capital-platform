@@ -98,6 +98,18 @@ function safeDate(val) {
   return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
 }
 
+function mapStage(val) {
+  if (!val) return null;
+  const v = String(val).toLowerCase().trim();
+  if (v.includes("pre-seed") || v.includes("pre seed") || v === "preseed") return "pre-seed";
+  if (v === "seed") return "seed";
+  if (v.includes("series a") || v.includes("series-a") || v === "a") return "series-a";
+  if (v.includes("series b") || v.includes("series-b") || v === "b") return "series-b";
+  if (v.includes("series c") || v.includes("series-c") || v === "c") return "series-c";
+  if (v.includes("growth") || v.includes("late")) return "growth";
+  return "other";
+}
+
 function mapInstrumentType(val) {
   if (!val) return "other";
   const v = String(val).toLowerCase().replace(/\s+/g, "_");
@@ -281,13 +293,23 @@ async function syncDeals() {
         if (error) throw error;
         entity_id = existingEntity.id;
       } else {
-        const { data: newEntity, error } = await supabase
+        // Try insert; if short_code conflicts, append a suffix from the airtable_id
+        let insertError, insertData;
+        ({ data: insertData, error: insertError } = await supabase
           .from("entities")
           .insert(entity_row)
           .select("id")
-          .single();
-        if (error) throw error;
-        entity_id = newEntity.id;
+          .single());
+        if (insertError && insertError.message.includes("entities_short_code_key")) {
+          const uniqueRow = { ...entity_row, short_code: `${short_code}-${airtable_id.slice(-4).toUpperCase()}` };
+          ({ data: insertData, error: insertError } = await supabase
+            .from("entities")
+            .insert(uniqueRow)
+            .select("id")
+            .single());
+        }
+        if (insertError) throw insertError;
+        entity_id = insertData.id;
       }
 
       stats.spvs.upserted++;
@@ -308,7 +330,7 @@ async function syncDeals() {
       cost_basis:          safeNum(f["Total Received"]) ?? 0,
       current_fair_value:  safeNum(f["Total Received"]) ?? 0,
       status:              f["Status"] === "Closed" ? "active" : "pending",
-      stage:               f["Stage"] ? String(f["Stage"]).toLowerCase() : null,
+      stage:               mapStage(f["Stage"]),
       instrument_type:     mapInstrumentType(f["Type"]),
       notes:               deal_code ?? null,
     };
