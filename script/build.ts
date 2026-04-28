@@ -62,18 +62,18 @@ async function buildAll() {
 async function copyScripts() {
   await mkdir("dist/scripts", { recursive: true });
 
-  // Bundle airtable_sync.js with esbuild so @supabase/supabase-js is inlined
-  // (the raw script can't require() external deps in Railway's dist/ directory)
+  // Bundle airtable_sync.js with esbuild so @supabase/supabase-js is inlined.
+  // Output as .cjs so Node doesn't treat it as ESM (package.json has "type":"module").
   await esbuild({
     entryPoints: ["scripts/airtable_sync.js"],
     platform: "node",
     bundle: true,
     format: "cjs",
-    outfile: "dist/scripts/airtable_sync.js",
+    outfile: "dist/scripts/airtable_sync.cjs",
     logLevel: "silent",
   });
 
-  // Bundle gmail_invoice_sync.cjs (uses only Node built-ins — still bundle for consistency)
+  // Bundle gmail_invoice_sync.cjs — output stays .cjs
   await esbuild({
     entryPoints: ["scripts/gmail_invoice_sync.cjs"],
     platform: "node",

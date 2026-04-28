@@ -1223,7 +1223,7 @@ Founders Capital`;
 
     // In dev: __dirname = server/, script at ../scripts/airtable_sync.js
     // In prod: __dirname = dist/,   script at scripts/airtable_sync.js (copied by build)
-    const scriptPath = path.join(__dirname, "scripts", "airtable_sync.js");
+    const scriptPath = path.join(__dirname, "scripts", "airtable_sync.cjs");
     const SUPA_URL = process.env.SUPABASE_URL || "https://yoyrwrdzivygufbzckdv.supabase.co";
     const SUPA_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
 
@@ -1278,7 +1278,7 @@ Founders Capital`;
       });
     }
 
-    const scriptPath = path.join(__dirname, "scripts", "gmail_invoice_sync.cjs");
+    const scriptPath = path.join(__dirname, "scripts", "gmail_invoice_sync.cjs"); // bundled by esbuild
     const child = fork(scriptPath, [], {
       env: {
         ...process.env,
