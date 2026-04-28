@@ -720,7 +720,21 @@ async function main() {
   });
 }
 
-main().catch(err => {
+main().catch(async err => {
   console.error("SYNC FAILED:", err);
+  // Write a failure row so /api/sync/airtable/status reflects the error
+  try {
+    if (SUPABASE_URL && SUPABASE_KEY) {
+      await supabase.from("airtable_sync_log").insert({
+        table_name:         "_summary",
+        airtable_record_id: null,
+        action:             "sync_complete",
+        status:             "error",
+        detail:             JSON.stringify({ error: err.message }),
+      });
+    }
+  } catch (logErr) {
+    console.error("Failed to write error log:", logErr.message);
+  }
   process.exit(1);
 });
