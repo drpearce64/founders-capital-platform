@@ -128,35 +128,62 @@ function DrillContent({
   const thStyle = { color: "hsl(var(--muted-foreground))", borderBottom: "1px solid hsl(var(--border))" };
 
   if (drillKey === "commitments") {
-    const sorted = [...filteredCommitments].sort((a, b) =>
-      parseFloat(b.committed_amount || 0) - parseFloat(a.committed_amount || 0)
-    );
+    // Sort by LP name so multi-series LPs appear adjacent
+    const sorted = [...filteredCommitments].sort((a, b) => {
+      const nameA = (a.investors?.full_name ?? "").toLowerCase();
+      const nameB = (b.investors?.full_name ?? "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr>
               <th className={TH} style={thStyle}>LP Name</th>
+              <th className={TH} style={{ ...thStyle }}>Series</th>
               <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Committed</th>
               <th className={TH} style={{ ...thStyle, textAlign: "right" }}>% of Total</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Called</th>
+              <th className={TH} style={{ ...thStyle, textAlign: "right" }}>% Called</th>
               <th className={TH} style={{ ...thStyle, textAlign: "center" }}>Status</th>
             </tr>
           </thead>
           <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-            {sorted.map((c: any) => {
+            {sorted.map((c: any, i: number) => {
               const committed = parseFloat(c.committed_amount || 0);
+              const called    = parseFloat(c.called_amount || 0);
+              const prevName  = i > 0 ? (sorted[i-1].investors?.full_name ?? "") : "";
+              const thisName  = c.investors?.full_name ?? c.investor_id;
+              const isRepeat  = prevName === thisName;
               return (
-                <tr key={c.id}>
+                <tr key={c.id} style={ isRepeat ? { background: "hsl(var(--muted) / 0.4)" } : {} }>
                   <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
-                    <div className="font-medium">{c.investors?.full_name ?? c.investor_id}</div>
+                    {isRepeat
+                      ? <span className="text-xs pl-2" style={{ color: "hsl(var(--muted-foreground))" }}>↳</span>
+                      : <span className="font-medium">{thisName}</span>
+                    }
+                  </td>
+                  <td className={TD}>
                     {c.entities?.short_code && (
-                      <div className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium font-mono"
+                        style={{ background: "#3B5BDB22", color: "#3B5BDB" }}>
                         {c.entities.short_code.replace("FC-", "")}
-                      </div>
+                      </span>
                     )}
                   </td>
                   <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>{fmt(committed)}</td>
                   <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--muted-foreground))" }}>{pct(committed, totalCommitted)}</td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>{fmt(called)}</td>
+                  <td className={TD + " text-right"}>
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border))" }}>
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(committed > 0 ? (called/committed)*100 : 0, 100)}%`, background: "#0CA678" }} />
+                      </div>
+                      <span className="font-mono text-xs w-9 text-right" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        {pct(called, committed)}
+                      </span>
+                    </div>
+                  </td>
                   <td className={TD + " text-center"}>
                     <Badge variant="outline" className="text-xs capitalize"
                       style={{ borderColor: c.status === "active" ? "#0CA678" : "#F59F00", color: c.status === "active" ? "#0CA678" : "#F59F00" }}>
@@ -169,8 +196,12 @@ function DrillContent({
           </tbody>
           <tfoot>
             <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
-              <td className="py-2.5 text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>Total</td>
+              <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>
+                {sorted.length} commitments · {new Set(sorted.map((c: any) => c.investor_id)).size} unique LPs
+              </td>
               <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmt(totalCommitted)}</td>
+              <td />
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmt(totalCalled)}</td>
               <td colSpan={2} />
             </tr>
           </tfoot>
@@ -182,40 +213,50 @@ function DrillContent({
   if (drillKey === "called") {
     const sorted = [...filteredCommitments]
       .filter(c => parseFloat(c.called_amount || 0) > 0)
-      .sort((a, b) => parseFloat(b.called_amount || 0) - parseFloat(a.called_amount || 0));
+      .sort((a, b) => (a.investors?.full_name ?? "").localeCompare(b.investors?.full_name ?? ""));
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr>
               <th className={TH} style={thStyle}>LP Name</th>
+              <th className={TH} style={thStyle}>Series</th>
               <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Called</th>
               <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Committed</th>
               <th className={TH} style={{ ...thStyle, textAlign: "right" }}>% Called</th>
             </tr>
           </thead>
           <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-            {sorted.map((c: any) => {
+            {sorted.map((c: any, i: number) => {
               const committed = parseFloat(c.committed_amount || 0);
-              const called = parseFloat(c.called_amount || 0);
+              const called    = parseFloat(c.called_amount || 0);
+              const prevName  = i > 0 ? (sorted[i-1].investors?.full_name ?? "") : "";
+              const thisName  = c.investors?.full_name ?? c.investor_id;
+              const isRepeat  = prevName === thisName;
               return (
-                <tr key={c.id}>
+                <tr key={c.id} style={ isRepeat ? { background: "hsl(var(--muted) / 0.4)" } : {} }>
                   <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
-                    <div className="font-medium">{c.investors?.full_name ?? c.investor_id}</div>
+                    {isRepeat
+                      ? <span className="text-xs pl-2" style={{ color: "hsl(var(--muted-foreground))" }}>↳</span>
+                      : <span className="font-medium">{thisName}</span>
+                    }
+                  </td>
+                  <td className={TD}>
                     {c.entities?.short_code && (
-                      <div className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium font-mono"
+                        style={{ background: "#0CA67822", color: "#0CA678" }}>
                         {c.entities.short_code.replace("FC-", "")}
-                      </div>
+                      </span>
                     )}
                   </td>
                   <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>{fmt(called)}</td>
                   <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--muted-foreground))" }}>{fmt(committed)}</td>
                   <td className={TD + " text-right"}>
                     <div className="flex items-center justify-end gap-2">
-                      <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border))" }}>
+                      <div className="w-14 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border))" }}>
                         <div className="h-full rounded-full" style={{ width: `${Math.min((called / committed) * 100, 100)}%`, background: "#0CA678" }} />
                       </div>
-                      <span className="font-mono text-xs w-10 text-right" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <span className="font-mono text-xs w-9 text-right" style={{ color: "hsl(var(--muted-foreground))" }}>
                         {pct(called, committed)}
                       </span>
                     </div>
@@ -226,7 +267,7 @@ function DrillContent({
           </tbody>
           <tfoot>
             <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
-              <td className="py-2.5 text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>Total</td>
+              <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>Total</td>
               <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmt(totalCalled)}</td>
               <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{fmt(totalCommitted)}</td>
               <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{pct(totalCalled, totalCommitted)}</td>
@@ -315,29 +356,39 @@ function DrillContent({
     const sorted = [...filteredCommitments]
       .map(c => ({ ...c, _uncalled: parseFloat(c.committed_amount || 0) - parseFloat(c.called_amount || 0) }))
       .filter(c => c._uncalled > 0)
-      .sort((a, b) => b._uncalled - a._uncalled);
+      .sort((a, b) => (a.investors?.full_name ?? "").localeCompare(b.investors?.full_name ?? ""));
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr>
               <th className={TH} style={thStyle}>LP Name</th>
+              <th className={TH} style={thStyle}>Series</th>
               <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Uncalled</th>
               <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Committed</th>
               <th className={TH} style={{ ...thStyle, textAlign: "right" }}>% Remaining</th>
             </tr>
           </thead>
           <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
-            {sorted.map((c: any) => {
+            {sorted.map((c: any, i: number) => {
               const committed = parseFloat(c.committed_amount || 0);
+              const prevName  = i > 0 ? (sorted[i-1].investors?.full_name ?? "") : "";
+              const thisName  = c.investors?.full_name ?? c.investor_id;
+              const isRepeat  = prevName === thisName;
               return (
-                <tr key={c.id}>
+                <tr key={c.id} style={ isRepeat ? { background: "hsl(var(--muted) / 0.4)" } : {} }>
                   <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
-                    <div className="font-medium">{c.investors?.full_name ?? c.investor_id}</div>
+                    {isRepeat
+                      ? <span className="text-xs pl-2" style={{ color: "hsl(var(--muted-foreground))" }}>↳</span>
+                      : <span className="font-medium">{thisName}</span>
+                    }
+                  </td>
+                  <td className={TD}>
                     {c.entities?.short_code && (
-                      <div className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium font-mono"
+                        style={{ background: "#F59F0022", color: "#F59F00" }}>
                         {c.entities.short_code.replace("FC-", "")}
-                      </div>
+                      </span>
                     )}
                   </td>
                   <td className={TD + " font-mono text-right font-medium"} style={{ color: "#F59F00" }}>{fmt(c._uncalled)}</td>
@@ -349,7 +400,7 @@ function DrillContent({
           </tbody>
           <tfoot>
             <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
-              <td className="py-2.5 text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>Total Uncalled</td>
+              <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>Total Uncalled</td>
               <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "#F59F00" }}>{fmt(uncalled)}</td>
               <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{fmt(totalCommitted)}</td>
               <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{pct(uncalled, totalCommitted)}</td>
