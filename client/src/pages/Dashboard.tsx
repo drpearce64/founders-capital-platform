@@ -8,6 +8,7 @@ import {
   Filter, X, ArrowUpRight,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ValuationMarkModal } from "@/components/ValuationMarkModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -622,6 +623,7 @@ interface DashboardData {
 export default function Dashboard() {
   const [activeDrill, setActiveDrill] = useState<DrillKey | null>(null);
   const [selectedSeries, setSelectedSeries] = useState<string>("all");
+  const [valuationInv, setValuationInv] = useState<any | null>(null);
 
   const openDrill = (key: DrillKey) => setActiveDrill(key);
   const closeDrill = () => setActiveDrill(null);
@@ -697,6 +699,7 @@ export default function Dashboard() {
     : null;
 
   return (
+    <>
     <div className="p-8 max-w-6xl mx-auto">
 
       {/* ── KPI Drill-down Sheet ── */}
@@ -909,7 +912,7 @@ export default function Dashboard() {
                   const m    = cost > 0 ? fv / cost : 1;
                   const gain = fv - cost;
                   return (
-                    <div key={inv.id} className="flex items-center justify-between py-1">
+                    <div key={inv.id} className="flex items-center justify-between py-1 group">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           {inv.entities?.short_code && (
@@ -930,11 +933,18 @@ export default function Dashboard() {
                           {inv.sector}{inv.instrument_type ? ` · ${inv.instrument_type.replace(/_/g, " ")}` : ""}
                         </p>
                       </div>
-                      <div className="text-right flex-shrink-0 ml-4">
-                        <p className="text-sm font-mono font-medium" style={{ color: "hsl(var(--foreground))" }}>{fmt(fv)}</p>
-                        <p className="text-xs font-mono" style={{ color: gain >= 0 ? "#0CA678" : "#FA5252" }}>
-                          {m.toFixed(2)}x {gain >= 0 ? "+" : ""}{fmt(gain)}
-                        </p>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                        <button
+                          onClick={() => setValuationInv(inv)}
+                          className="text-[10px] px-2 py-0.5 rounded border opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ borderColor: "#3B5BDB", color: "#3B5BDB", background: "transparent" }}
+                        >Mark</button>
+                        <div className="text-right">
+                          <p className="text-sm font-mono font-medium" style={{ color: "hsl(var(--foreground))" }}>{fmt(fv)}</p>
+                          <p className="text-xs font-mono" style={{ color: gain >= 0 ? "#0CA678" : "#FA5252" }}>
+                            {m.toFixed(2)}x {gain >= 0 ? "+" : ""}{fmt(gain)}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1070,5 +1080,13 @@ export default function Dashboard() {
         </CardContent>
       </Card>
     </div>
+
+    {/* Valuation Mark Modal */}
+    <ValuationMarkModal
+      investment={valuationInv}
+      open={!!valuationInv}
+      onClose={() => setValuationInv(null)}
+    />
+    </>
   );
 }

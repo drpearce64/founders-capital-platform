@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { TrendingUp, DollarSign, Briefcase, BarChart3, Search, ExternalLink, Users, ArrowUpRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ValuationMarkModal } from "@/components/ValuationMarkModal";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number, compact = false) {
@@ -371,6 +372,7 @@ export default function OtherInvestments() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"cost" | "fv" | "name">("fv");
   const [activeDrill, setActiveDrill] = useState<OtherDrillKey | null>(null);
+  const [valuationInv, setValuationInv] = useState<any | null>(null);
 
   const { data: allInvestments = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/investments", "other"],
@@ -419,6 +421,7 @@ export default function OtherInvestments() {
   const text   = "hsl(var(--foreground))";
 
   return (
+    <>
     <div className="min-h-screen p-6 md:p-8" style={{ background: bg }}>
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
@@ -535,7 +538,7 @@ export default function OtherInvestments() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
-                {["Company", "Series", "Stage", "Investors", "Cost Basis", "Fair Value", "MOIC"].map(h => (
+                {["Company", "Series", "Stage", "Investors", "Cost Basis", "Fair Value", "MOIC", ""].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: muted }}>{h}</th>
                 ))}
               </tr>
@@ -629,6 +632,15 @@ export default function OtherInvestments() {
                         {moicI.toFixed(2)}x
                       </span>
                     </td>
+
+                    {/* Valuation Mark action */}
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => setValuationInv(inv)}
+                        className="text-[10px] px-2 py-0.5 rounded border whitespace-nowrap"
+                        style={{ borderColor: "#3B5BDB", color: "#3B5BDB", background: "transparent" }}
+                      >Mark</button>
+                    </td>
                   </tr>
                 );
               })}
@@ -637,5 +649,13 @@ export default function OtherInvestments() {
         )}
       </div>
     </div>
+
+    {/* Valuation Mark Modal */}
+    <ValuationMarkModal
+      investment={valuationInv}
+      open={!!valuationInv}
+      onClose={() => setValuationInv(null)}
+    />
+    </>
   );
 }

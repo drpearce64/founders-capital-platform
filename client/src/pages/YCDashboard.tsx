@@ -6,6 +6,7 @@ import {
   TrendingUp, DollarSign, Building2, ExternalLink, Layers, Zap, ArrowUpRight,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ValuationMarkModal } from "@/components/ValuationMarkModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface YCDeal {
@@ -446,6 +447,32 @@ export default function YCDashboard() {
   const [sortField, setSortField] = useState<keyof YCDeal>("batch");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [activeDrill, setActiveDrill] = useState<YCDrillKey | null>(null);
+  const [valuationInv, setValuationInv] = useState<any | null>(null);
+
+  // Load all investments for YC name-matching
+  const { data: allInvestments = [] } = useQuery<any[]>({
+    queryKey: ["/api/investments", "yc-lookup"],
+    queryFn: () => apiRequest("GET", "/api/investments").then(r => r.json()),
+  });
+
+  function openValuationForDeal(deal: YCDeal) {
+    // Find matching investments row by name (YC deals share name with investments.company_name)
+    const match = allInvestments.find(
+      (i: any) => i.company_name?.toLowerCase() === deal.name?.toLowerCase()
+    );
+    if (match) {
+      setValuationInv(match);
+    } else {
+      // Fallback: synthetic object so modal still opens with deal context
+      setValuationInv({
+        id: null,
+        company_name: deal.name,
+        cost_basis: deal.fc_investment ?? deal.usd_investment_value ?? 0,
+        current_fair_value: deal.live_market_value_usd ?? deal.usd_investment_value ?? deal.fc_investment ?? 0,
+        _noInvestmentRecord: true,
+      });
+    }
+  }
 
   const DRILL_TITLES: Record<YCDrillKey, { title: string; subtitle: string }> = {
     companies:   { title: "Portfolio Companies",  subtitle: "All YC deals" },
@@ -807,6 +834,7 @@ export default function YCDashboard() {
                       </th>
                     ))}
                     <th className="px-4 py-3 text-left font-medium">Follow-on</th>
+                    <th className="px-4 py-3 text-left font-medium"></th>
                     <th className="px-4 py-3 text-left font-medium">Link</th>
                   </tr>
                 </thead>
@@ -920,6 +948,15 @@ export default function YCDashboard() {
                         )}
                       </td>
 
+                      {/* Valuation Mark */}
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => openValuationForDeal(deal)}
+                          className="text-[10px] px-2 py-0.5 rounded border whitespace-nowrap"
+                          style={{ borderColor: "#3B5BDB", color: "#3B5BDB", background: "transparent" }}
+                        >Mark</button>
+                      </td>
+
                       {/* Link */}
                       <td className="px-4 py-3">
                         {deal.url ? (
@@ -940,7 +977,7 @@ export default function YCDashboard() {
 
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="px-4 py-8 text-center text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      <td colSpan={12} className="px-4 py-8 text-center text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
                         No deals found for this cohort.
                       </td>
                     </tr>
@@ -974,6 +1011,13 @@ export default function YCDashboard() {
         </div>
       </div>
       )}
+
+    {/* Valuation Mark Modal */}
+    <ValuationMarkModal
+      investment={valuationInv}
+      open={!!valuationInv}
+      onClose={() => setValuationInv(null)}
+    />
     </>
   );
 }

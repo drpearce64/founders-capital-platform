@@ -146,6 +146,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(data);
   });
 
+  // ── Valuation Marks ────────────────────────────────────────────────────────
+
+  // GET /api/valuation-marks?investment_id=xxx  — full history for one investment
+  app.get("/api/valuation-marks", async (req, res) => {
+    const { investment_id } = req.query;
+    if (!investment_id) return res.status(400).json({ error: "investment_id required" });
+    const { data, error } = await supabase
+      .from("valuation_marks")
+      .select("*")
+      .eq("investment_id", investment_id as string)
+      .order("mark_date", { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // POST /api/valuation-marks  — add a new mark, then update investments.current_fair_value
+  app.post("/api/valuation-marks", async (req, res) => {
+    const { investment_id, mark_date, fair_value, valuation_basis, source_url, source_description, implied_valuation, marked_by, notes } = req.body;
+    if (!investment_id || !mark_date || fair_value == null || !valuation_basis) {
+      return res.status(400).json({ error: "investment_id, mark_date, fair_value, and valuation_basis are required" });
+    }
+    // Insert the mark
+    const { data: mark, error: markErr } = await supabase
+      .from("valuation_marks")
+      .insert({ investment_id, mark_date, fair_value: Number(fair_value), valuation_basis, source_url: source_url || null, source_description: source_description || null, implied_valuation: implied_valuation ? Number(implied_valuation) : null, marked_by: marked_by || null, notes: notes || null })
+      .select()
+      .single();
+    if (markErr) return res.status(500).json({ error: markErr.message });
+    // Update the parent investment's current_fair_value and fair_value_date
+    const { error: invErr } = await supabase
+      .from("investments")
+      .update({ current_fair_value: Number(fair_value), fair_value_date: mark_date, valuation_basis })
+      .eq("id", investment_id);
+    if (invErr) return res.status(500).json({ error: invErr.message });
+    await audit("valuation_marks", mark.id, "create", `Valuation mark added: ${valuation_basis} at ${fair_value} on ${mark_date}`);
+    res.json(mark);
+  });
+
   // ── Capital Calls ──────────────────────────────────────────────────────────
 
   app.get("/api/capital-calls", async (req, res) => {
