@@ -2258,6 +2258,77 @@ Founders Capital`;
   });
 
   // ── YC Portfolio ──────────────────────────────────────────────────────────────
+  // PATCH /api/yc-deals/:id/health-status — update health status + optional note
+  app.patch("/api/yc-deals/:id/health-status", async (req, res) => {
+    const { id } = req.params;
+    const { health_status, health_status_note } = req.body as {
+      health_status: string;
+      health_status_note?: string;
+    };
+    const allowed = ["Active", "At Risk", "Written Off", "Exited"];
+    if (!allowed.includes(health_status)) {
+      return res.status(400).json({ error: `Invalid health_status. Must be one of: ${allowed.join(", ")}` });
+    }
+    try {
+      const updateData: any = {
+        health_status,
+        health_status_note: health_status_note ?? null,
+        health_status_updated_at: new Date().toISOString(),
+      };
+      // If writing off, also zero the live market value
+      if (health_status === "Written Off") {
+        updateData.live_market_value_usd = 0;
+        updateData.moic = 0;
+      }
+      const { error } = await supabase
+        .from("yc_deals")
+        .update(updateData)
+        .eq("id", id);
+      if (error) return res.status(500).json({ error: error.message });
+
+      // If written off, also insert a valuation_mark at $0 for the matching investments row
+      if (health_status === "Written Off") {
+        const { data: invRows } = await supabase
+          .from("investments")
+          .select("id, company_name")
+          .ilike("company_name", `%${id.replace(/_/g, " ").replace(/\(.*\)/, "").trim()}%`)
+          .limit(5);
+        // Try to match by fetching the deal name first
+        const { data: dealRow } = await supabase
+          .from("yc_deals")
+          .select("name")
+          .eq("id", id)
+          .single();
+        if (dealRow?.name && invRows && invRows.length > 0) {
+          const match = invRows.find(
+            (r: any) => r.company_name?.toLowerCase() === dealRow.name?.toLowerCase()
+          ) ?? invRows[0];
+          if (match) {
+            await supabase.from("valuation_marks").insert({
+              investment_id: match.id,
+              mark_date: new Date().toISOString().slice(0, 10),
+              fair_value: 0,
+              valuation_basis: "Write-off",
+              source_description: health_status_note ?? "Marked as written off",
+              implied_valuation: 0,
+              marked_by: "Manual (health status update)",
+              notes: health_status_note ?? null,
+            });
+            await supabase.from("investments").update({
+              current_fair_value: 0,
+              fair_value_date: new Date().toISOString().slice(0, 10),
+              valuation_basis: "Write-off",
+            }).eq("id", match.id);
+          }
+        }
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // GET /api/yc-deals — read from Supabase yc_deals table (seeded from Airtable)
   app.get("/api/yc-deals", async (_req, res) => {
     try {

@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Search } from "lucide-react";
+import { Search, AlertTriangle, XCircle, CheckCircle, TrendingDown, ChevronDown } from "lucide-react";
 import {
   TrendingUp, DollarSign, Building2, ExternalLink, Layers, Zap, ArrowUpRight,
 } from "lucide-react";
@@ -38,6 +38,9 @@ interface YCDeal {
   followon_lead_investor: string | null;
   followon_post_money_valuation: number | null;
   followon_source: string | null;
+  health_status: "Active" | "At Risk" | "Written Off" | "Exited";
+  health_status_note: string | null;
+  health_status_updated_at: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -115,6 +118,145 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
       {status}
     </span>
+  );
+}
+
+// ── Health Status Badge + Popover ────────────────────────────────────────────
+const HEALTH_CONFIG: Record<string, { label: string; bg: string; color: string; icon: any }> = {
+  "Active":      { label: "Active",      bg: "#E8F5E9", color: "#2E7D32", icon: CheckCircle },
+  "At Risk":     { label: "At Risk",     bg: "#FFF8E1", color: "#E65100", icon: AlertTriangle },
+  "Written Off": { label: "Written Off", bg: "#FFEBEE", color: "#C62828", icon: XCircle },
+  "Exited":      { label: "Exited",      bg: "#E3F2FD", color: "#1565C0", icon: TrendingDown },
+};
+
+function HealthBadge({ status }: { status: string }) {
+  const cfg = HEALTH_CONFIG[status] ?? HEALTH_CONFIG["Active"];
+  const Icon = cfg.icon;
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+      style={{ background: cfg.bg, color: cfg.color }}
+    >
+      <Icon size={10} />
+      {cfg.label}
+    </span>
+  );
+}
+
+function HealthStatusPopover({
+  deal, onUpdated,
+}: {
+  deal: YCDeal;
+  onUpdated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState("");
+  const [selected, setSelected] = useState<string>(deal.health_status ?? "Active");
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/yc-deals/${deal.id}/health-status`, {
+        health_status: selected,
+        health_status_note: note || undefined,
+      });
+      onUpdated();
+      setOpen(false);
+      setNote("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const current = deal.health_status ?? "Active";
+  const cfg = HEALTH_CONFIG[current] ?? HEALTH_CONFIG["Active"];
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => { setSelected(current); setOpen(o => !o); }}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-opacity hover:opacity-80"
+        style={{ background: cfg.bg, color: cfg.color }}
+      >
+        <cfg.icon size={10} />
+        {cfg.label}
+        <ChevronDown size={9} style={{ opacity: 0.7 }} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-50 left-0 top-full mt-1 rounded-xl border shadow-lg p-3"
+          style={{ background: "#fff", borderColor: "hsl(var(--border))", minWidth: 220 }}
+        >
+          <p className="text-xs font-semibold mb-2" style={{ color: "hsl(var(--foreground))" }}>Update Status</p>
+          <div className="flex flex-col gap-1 mb-3">
+            {Object.entries(HEALTH_CONFIG).map(([key, c]) => (
+              <button
+                key={key}
+                onClick={() => setSelected(key)}
+                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors"
+                style={{
+                  background: selected === key ? c.bg : "transparent",
+                  color: selected === key ? c.color : "hsl(var(--foreground))",
+                  fontWeight: selected === key ? 600 : 400,
+                }}
+              >
+                <c.icon size={12} />
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {/* Note field */}
+          <textarea
+            rows={2}
+            placeholder={selected === "Written Off" ? "Reason for write-off (optional)" : "Note (optional)"}
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            className="w-full rounded border px-2 py-1 text-xs resize-none mb-2 outline-none"
+            style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))", background: "hsl(var(--muted)/0.3)" }}
+          />
+          {selected === "Written Off" && (
+            <p className="text-xs mb-2" style={{ color: "#C62828" }}>
+              This will zero the fair value and insert a write-off valuation mark.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={save}
+              disabled={saving || selected === current}
+              className="flex-1 py-1 rounded text-xs font-semibold transition-opacity"
+              style={{ background: "#3B5BDB", color: "#fff", opacity: (saving || selected === current) ? 0.5 : 1 }}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              className="px-3 py-1 rounded text-xs"
+              style={{ background: "hsl(var(--muted))", color: "hsl(var(--foreground))" }}
+            >
+              Cancel
+            </button>
+          </div>
+          {deal.health_status_note && (
+            <p className="text-xs mt-2 pt-2 border-t" style={{ color: "hsl(var(--muted-foreground))", borderColor: "hsl(var(--border))" }}>
+              Last note: {deal.health_status_note}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -441,7 +583,9 @@ function YCDrillContent({ drillKey, deals }: { drillKey: YCDrillKey; deals: YCDe
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function YCDashboard() {
+  const qc = useQueryClient();
   const [batchFilter, setBatchFilter] = useState<string>("all");
+  const [healthFilter, setHealthFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [followonOnly, setFollowonOnly] = useState(false);
   const [sortField, setSortField] = useState<keyof YCDeal>("batch");
@@ -516,6 +660,10 @@ export default function YCDashboard() {
       d = d.filter((x) => (x.name ?? "").toLowerCase().includes(q) || (x.batch ?? "").toLowerCase().includes(q));
     }
     if (followonOnly) d = d.filter((x) => x.has_followon);
+    if (healthFilter === "at-risk")     d = d.filter((x) => (x.health_status ?? "Active") === "At Risk");
+    if (healthFilter === "written-off") d = d.filter((x) => (x.health_status ?? "Active") === "Written Off");
+    if (healthFilter === "exited")      d = d.filter((x) => (x.health_status ?? "Active") === "Exited");
+    if (healthFilter === "watchlist")   d = d.filter((x) => ["At Risk", "Written Off"].includes(x.health_status ?? "Active"));
     return [...d].sort((a, b) => {
       const av = a[sortField] ?? "";
       const bv = b[sortField] ?? "";
@@ -526,7 +674,7 @@ export default function YCDashboard() {
         ? String(av).localeCompare(String(bv))
         : String(bv).localeCompare(String(av));
     });
-  }, [deals, batchFilter, sortField, sortDir]);
+  }, [deals, batchFilter, healthFilter, sortField, sortDir, search, followonOnly]);
 
   // KPIs — always computed from filtered set
   const kpis = useMemo(() => {
@@ -546,6 +694,13 @@ export default function YCDashboard() {
     for (const d of deals) map[d.batch] = (map[d.batch] ?? 0) + 1;
     return map;
   }, [deals]);
+
+  // Health status counts (across all deals, ignoring batch/search filters)
+  const healthCounts = useMemo(() => ({
+    atRisk:     deals.filter(d => (d.health_status ?? "Active") === "At Risk").length,
+    writtenOff: deals.filter(d => (d.health_status ?? "Active") === "Written Off").length,
+    exited:     deals.filter(d => (d.health_status ?? "Active") === "Exited").length,
+  }), [deals]);
 
   function toggleSort(field: keyof YCDeal) {
     if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -802,6 +957,40 @@ export default function YCDashboard() {
             </div>
           </div>
 
+          {/* Health Status Filter Bar */}
+          {(healthCounts.atRisk + healthCounts.writtenOff + healthCounts.exited > 0 || healthFilter !== "all") && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Health:</span>
+              {([
+                { id: "all",         label: "All",         count: null,                  bg: "hsl(var(--muted))",  color: "hsl(var(--foreground))" },
+                { id: "at-risk",     label: "At Risk",     count: healthCounts.atRisk,     bg: "#FFF8E1",           color: "#E65100" },
+                { id: "written-off", label: "Written Off", count: healthCounts.writtenOff, bg: "#FFEBEE",           color: "#C62828" },
+                { id: "exited",      label: "Exited",      count: healthCounts.exited,     bg: "#E3F2FD",           color: "#1565C0" },
+                { id: "watchlist",   label: "Watchlist",   count: healthCounts.atRisk + healthCounts.writtenOff, bg: "#FFF3E0", color: "#BF360C" },
+              ] as { id: string; label: string; count: number | null; bg: string; color: string }[]).map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setHealthFilter(f.id)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all"
+                  style={{
+                    background: healthFilter === f.id ? f.bg : "transparent",
+                    color: healthFilter === f.id ? f.color : "hsl(var(--muted-foreground))",
+                    borderColor: healthFilter === f.id ? f.color + "60" : "hsl(var(--border))",
+                    fontWeight: healthFilter === f.id ? 600 : 400,
+                  }}
+                >
+                  {f.label}
+                  {f.count !== null && f.count > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                      style={{ background: f.color + "20", color: f.color }}>
+                      {f.count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Portfolio Table */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
             <div
@@ -832,7 +1021,7 @@ export default function YCDashboard() {
                         { label: "FC Investment", field: "fc_investment"        as keyof YCDeal, align: "right" },
                         { label: "SPV Total",     field: "usd_investment_value" as keyof YCDeal, align: "right" },
                         { label: "MOIC",          field: "moic"                as keyof YCDeal, align: "right" },
-                        { label: "Status",        field: "status"              as keyof YCDeal, align: "left"  },
+                        { label: "Health",        field: "health_status"       as keyof YCDeal, align: "left"  },
                         { label: "Closed",        field: "closing_date"        as keyof YCDeal, align: "left"  },
                       ] as const
                     ).map(({ label, field, align }) => (
@@ -859,7 +1048,10 @@ export default function YCDashboard() {
                       className="border-b hover:opacity-80 transition-opacity"
                       style={{
                         borderColor: "hsl(var(--border))",
-                        background: i % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.3)",
+                        background:
+                          (deal.health_status ?? "Active") === "Written Off" ? "rgba(198,40,40,0.06)" :
+                          (deal.health_status ?? "Active") === "At Risk"     ? "rgba(230,81,0,0.05)" :
+                          i % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.3)",
                       }}
                     >
                       {/* Company */}
@@ -925,9 +1117,12 @@ export default function YCDashboard() {
                         </span>
                       </td>
 
-                      {/* Status */}
+                      {/* Health Status */}
                       <td className="px-4 py-3">
-                        <StatusBadge status={deal.status} />
+                        <HealthStatusPopover
+                          deal={deal}
+                          onUpdated={() => qc.invalidateQueries({ queryKey: ["/api/yc-deals"] })}
+                        />
                       </td>
 
                       {/* Closing date */}
