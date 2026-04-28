@@ -296,6 +296,7 @@ async function syncDeals() {
       current_fair_value:  safeNum(f["Total Received"]) ?? 0,
       status:              f["Status"] === "Closed" ? "active" : "pending",
       stage:               f["Stage"] ? String(f["Stage"]).toLowerCase() : null,
+      instrument_type:     f["Type"] ? String(f["Type"]).toLowerCase() : "equity",
       notes:               deal_code ?? null,
     };
 
