@@ -324,7 +324,16 @@ export default function PortfolioSummary() {
   // YC: map yc_deals to investment-like rows, then try to merge with actual investments record
   const ycInvs = useMemo(() => {
     const deals: any[] = ycData?.deals ?? [];
-    return deals.map((d: any) => {
+    // Dedup by name — keep the row with the highest fc_investment (real entry over ghost duplicates)
+    const seen = new Map<string, any>();
+    for (const d of deals) {
+      const key = (d.name ?? "").toLowerCase();
+      const existing = seen.get(key);
+      if (!existing || (d.fc_investment ?? 0) > (existing.fc_investment ?? 0)) {
+        seen.set(key, d);
+      }
+    }
+    return Array.from(seen.values()).map((d: any) => {
       // Try to find matching investments row for mark data
       const match = allInvestments.find(
         (i: any) => i.company_name?.toLowerCase() === d.name?.toLowerCase()

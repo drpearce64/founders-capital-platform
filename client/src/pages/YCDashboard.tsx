@@ -488,7 +488,19 @@ export default function YCDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const deals = data?.deals ?? [];
+  // Dedup by name — keep highest fc_investment row to eliminate ghost duplicates
+  const deals = useMemo(() => {
+    const raw: YCDeal[] = data?.deals ?? [];
+    const seen = new Map<string, YCDeal>();
+    for (const d of raw) {
+      const key = (d.name ?? "").toLowerCase();
+      const existing = seen.get(key);
+      if (!existing || (d.fc_investment ?? 0) > (existing.fc_investment ?? 0)) {
+        seen.set(key, d);
+      }
+    }
+    return Array.from(seen.values());
+  }, [data]);
 
   // Unique batches sorted
   const batches = useMemo(() => {
