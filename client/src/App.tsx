@@ -26,6 +26,7 @@ import AccountsPayable from "./pages/AccountsPayable";
 import GroupStructure from "./pages/GroupStructure";
 import ReportingCalendar from "./pages/ReportingCalendar";
 import FCInvestments from "./pages/FCInvestments";
+import OtherInvestments from "./pages/OtherInvestments";
 import YCDashboard from "./pages/YCDashboard";
 import InvestorRegister from "./pages/InvestorRegister";
 
@@ -66,6 +67,7 @@ export default function App() {
             <Route path="/group-structure"      component={GroupStructure} />
             <Route path="/reporting-calendar"   component={ReportingCalendar} />
             <Route path="/fc-investments"        component={FCInvestments} />
+            <Route path="/other-investments"      component={OtherInvestments} />
             <Route path="/yc-portfolio"          component={YCDashboard} />
             <Route path="/investor-register"     component={InvestorRegister} />
 

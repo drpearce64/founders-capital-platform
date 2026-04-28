@@ -20,7 +20,6 @@ const delawareNav = [
   { href: "/nav-marks",          label: "NAV / Fair Value",       icon: BarChart3,       section: "finance" },
   { href: "/tax-accounts",       label: "Tax & Capital Accounts", icon: BookOpen,        section: "finance" },
   { href: "/accounts-payable",   label: "Accounts Payable",       icon: FileCheck,       section: "finance" },
-  { href: "/fc-investments",     label: "FC Investments",         icon: Briefcase,       section: "overview" },
   { href: "/group-structure",    label: "Group Structure",        icon: Network,         section: "group" },
   { href: "/investor-register",  label: "Investor Register",      icon: BookUser,        section: "group" },
   { href: "/statements",         label: "Statements",             icon: FileText,        section: "reporting" },
@@ -68,11 +67,11 @@ const caymanSections: Record<string, string> = {
 
 // ── YC nav ────────────────────────────────────────────────────────────────────
 const ycNav = [
-  { href: "/yc-portfolio", label: "Portfolio",        icon: LayoutDashboard, section: "overview" },
-  { href: "/group-structure", label: "Group Structure", icon: Network,       section: "group" },
-  { href: "/investor-register", label: "Investor Register", icon: BookUser, section: "group" },
-  { href: "/documents",     label: "Documents",        icon: FolderOpen,     section: "admin" },
-  { href: "/audit-log",     label: "Audit Log",        icon: Shield,         section: "admin" },
+  { href: "/yc-portfolio",       label: "Portfolio",          icon: LayoutDashboard, section: "overview" },
+  { href: "/group-structure",    label: "Group Structure",    icon: Network,         section: "group" },
+  { href: "/investor-register",  label: "Investor Register",  icon: BookUser,        section: "group" },
+  { href: "/documents",          label: "Documents",          icon: FolderOpen,      section: "admin" },
+  { href: "/audit-log",          label: "Audit Log",          icon: Shield,          section: "admin" },
 ];
 
 const ycSections: Record<string, string> = {
@@ -81,20 +80,36 @@ const ycSections: Record<string, string> = {
   admin:    "Administration",
 };
 
+// ── Other Investments nav ─────────────────────────────────────────────────────
+const otherNav = [
+  { href: "/other-investments",  label: "Portfolio",          icon: LayoutDashboard, section: "overview" },
+  { href: "/fc-investments",     label: "FC Investments",     icon: Briefcase,       section: "overview" },
+  { href: "/group-structure",    label: "Group Structure",    icon: Network,         section: "group" },
+  { href: "/investor-register",  label: "Investor Register",  icon: BookUser,        section: "group" },
+  { href: "/documents",          label: "Documents",          icon: FolderOpen,      section: "admin" },
+  { href: "/audit-log",          label: "Audit Log",          icon: Shield,          section: "admin" },
+];
+
+const otherSections: Record<string, string> = {
+  overview: "Overview",
+  group:    "Group",
+  admin:    "Administration",
+};
+
 // ── Jurisdiction config ───────────────────────────────────────────────────────
-type Jurisdiction = "delaware" | "cayman" | "yc";
+type Jurisdiction = "delaware" | "cayman" | "yc" | "other";
 
 const JURISDICTIONS: Record<Jurisdiction, { flag: string; label: string; sub: string; homeRoute: string }> = {
-  delaware: { flag: "🇺🇸", label: "Delaware",       sub: "Series LP",    homeRoute: "/" },
-  cayman:   { flag: "🇰🇾", label: "Cayman Islands", sub: "Exempted LP",  homeRoute: "/cayman" },
-  yc:       { flag: "🅈🄲", label: "YC",             sub: "Portfolio",    homeRoute: "/yc-portfolio" },
+  delaware: { flag: "🇺🇸", label: "Delaware",    sub: "Series LP",     homeRoute: "/" },
+  cayman:   { flag: "🇰🇾", label: "Cayman",      sub: "Exempted LP",   homeRoute: "/cayman" },
+  yc:       { flag: "🇺🇸", label: "YC",          sub: "Portfolio",     homeRoute: "/yc-portfolio" },
+  other:    { flag: "🌐",  label: "Other",       sub: "Investments",   homeRoute: "/other-investments" },
 };
 
 function detectJurisdiction(path: string): Jurisdiction {
-  if (path.startsWith("/cayman"))         return "cayman";
-  if (path.startsWith("/yc-portfolio"))   return "yc";
-  // investor-register is accessible from all jurisdictions — keep current jurisdiction
-  // if accessed directly, default to delaware
+  if (path.startsWith("/cayman"))             return "cayman";
+  if (path.startsWith("/yc-portfolio"))       return "yc";
+  if (path.startsWith("/other-investments") || path.startsWith("/fc-investments")) return "other";
   return "delaware";
 }
 
@@ -107,8 +122,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (j !== jurisdiction) navigate(JURISDICTIONS[j].homeRoute);
   }
 
-  const nav      = jurisdiction === "delaware" ? delawareNav : jurisdiction === "cayman" ? caymanNav : ycNav;
-  const sections = jurisdiction === "delaware" ? delawareSections : jurisdiction === "cayman" ? caymanSections : ycSections;
+  const nav      = jurisdiction === "delaware" ? delawareNav
+                 : jurisdiction === "cayman"   ? caymanNav
+                 : jurisdiction === "yc"       ? ycNav
+                 : otherNav;
+  const sections = jurisdiction === "delaware" ? delawareSections
+                 : jurisdiction === "cayman"   ? caymanSections
+                 : jurisdiction === "yc"       ? ycSections
+                 : otherSections;
   const jInfo    = JURISDICTIONS[jurisdiction];
 
   return (
@@ -145,7 +166,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Jurisdiction Switcher — 3 columns */}
+        {/* Jurisdiction Switcher — 2×2 grid */}
         <div className="px-3 pt-3 pb-2">
           <p
             className="px-2 mb-1.5 text-xs font-semibold uppercase tracking-wider"
@@ -153,35 +174,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             View
           </p>
-          <div
-            className="flex rounded-lg overflow-hidden border"
-            style={{ borderColor: "hsl(var(--sidebar-border))" }}
-          >
-            {(["delaware", "cayman", "yc"] as Jurisdiction[]).map((key, idx, arr) => {
+          <div className="grid grid-cols-2 gap-1">
+            {(["delaware", "cayman", "yc", "other"] as Jurisdiction[]).map((key) => {
               const info   = JURISDICTIONS[key];
               const active = jurisdiction === key;
-              const isLast = idx === arr.length - 1;
               return (
                 <button
                   key={key}
                   data-testid={`jurisdiction-${key}`}
                   onClick={() => switchJurisdiction(key)}
-                  className="flex-1 flex flex-col items-center gap-0.5 py-2 px-1 text-xs font-medium transition-colors"
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors"
                   style={{
                     background:  active ? "hsl(231 70% 54% / 0.22)" : "hsl(0 0% 100% / 0.04)",
                     color:       active ? "hsl(231 70% 76%)"         : "hsl(0 0% 50%)",
-                    borderRight: !isLast ? "1px solid hsl(var(--sidebar-border))" : "none",
+                    border:      `1px solid ${active ? "hsl(231 70% 54% / 0.3)" : "transparent"}`,
                   }}
                 >
-                  {key === "yc" ? (
-                    /* US flag + YC label */
-                    <span className="text-base leading-none">🇺🇸</span>
-                  ) : (
-                    <span className="text-base leading-none">{info.flag}</span>
-                  )}
-                  <span className="leading-tight truncate w-full text-center" style={{ fontSize: "10px" }}>
-                    {key === "delaware" ? "Delaware" : key === "cayman" ? "Cayman" : "YC"}
-                  </span>
+                  <span className="text-sm leading-none">{info.flag}</span>
+                  <span className="truncate" style={{ fontSize: "11px" }}>{info.label}</span>
                 </button>
               );
             })}
