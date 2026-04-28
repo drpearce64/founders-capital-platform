@@ -147,7 +147,7 @@ export default function Dashboard() {
 
   // Series SPVs only (for the picker dropdown)
   const seriesSPVs = useMemo(() =>
-    (entities as any[]).filter(e => e.entity_type === "series_spv")
+    (entities as any[]).filter(e => e.entity_type === "series_spv" && e.short_code?.startsWith("FC-VECTOR"))
       .sort((a, b) => a.short_code.localeCompare(b.short_code)),
     [entities]
   );
@@ -179,8 +179,8 @@ export default function Dashboard() {
 
   // ── Computed metrics — always derived from filtered queries ─────────────────
   const filteredCommitments = (commitments as any[]).filter(c =>
-    // Delaware: exclude Cayman entities only
-    !c.entities?.short_code?.startsWith("FC-CAYMAN")
+    // Delaware: restrict to FC-VECTOR-* Series SPVs only
+    c.entities?.short_code?.startsWith("FC-VECTOR")
   );
 
   const totalCommitted  = filteredCommitments.reduce((s, c) => s + parseFloat(c.committed_amount || 0), 0);
