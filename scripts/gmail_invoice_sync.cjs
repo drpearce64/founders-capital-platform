@@ -265,8 +265,11 @@ async function main() {
 }
 
 main().then(r => {
+  // Emit final JSON line so the Express route can parse the result
+  process.stdout.write(JSON.stringify(r) + "\n");
   process.exit(r.errors.length > 0 ? 1 : 0);
 }).catch(err => {
   console.error("[InvoiceSync] FATAL:", err.message);
+  process.stdout.write(JSON.stringify({ synced: 0, skipped: 0, errors: [{ error: err.message }] }) + "\n");
   process.exit(1);
 });

@@ -367,7 +367,7 @@ export default function FCInvestments() {
 
   if (error) {
     const errMsg = (error as Error).message ?? String(error);
-    const needsPat = errMsg.includes("AIRTABLE_PAT") || errMsg.includes("500");
+    const needsPat = errMsg.includes("AIRTABLE_PAT") || errMsg.includes("500") || errMsg.includes("permission") || errMsg.includes("INVALID_PERMISSIONS");
     return (
       <div className="p-8 space-y-4">
         <div>
@@ -381,10 +381,11 @@ export default function FCInvestments() {
             </h3>
             {needsPat ? (
               <ol className="text-sm text-amber-800 space-y-1.5 list-decimal list-inside">
-                <li>Go to <strong>airtable.com/create/tokens</strong> and create a token with <code className="bg-amber-100 px-1 rounded">data.records:read</code> scope on the <strong>Founders Capital 2.0</strong> base</li>
-                <li>Open your Railway project → service → <strong>Variables</strong> tab</li>
-                <li>Add a variable named <code className="bg-amber-100 px-1 rounded">AIRTABLE_PAT</code> with the token value</li>
-                <li>Railway will redeploy automatically — this page will load once it's set</li>
+                <li>Go to <strong>airtable.com/create/tokens</strong> and open your existing token (or create a new one)</li>
+                <li>Ensure the scope includes <code className="bg-amber-100 px-1 rounded">data.records:read</code></li>
+                <li>Under <strong>Access</strong>, confirm <strong>Founders Capital 2.0</strong> is listed as an accessible base</li>
+                <li>Copy the token and update <code className="bg-amber-100 px-1 rounded">AIRTABLE_PAT</code> in Railway → Variables</li>
+                <li>Railway will redeploy automatically — this page will load once updated</li>
               </ol>
             ) : (
               <p className="text-sm text-amber-700">{errMsg}</p>

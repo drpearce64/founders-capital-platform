@@ -1254,6 +1254,80 @@ Founders Capital`;
     res.json({ status: "sync_started", message: "Airtable sync running in background" });
   });
 
+  // POST /api/sync/gmail-invoices — trigger Gmail invoice scan
+  app.post("/api/sync/gmail-invoices", async (req, res) => {
+    const secret = process.env.SYNC_SECRET;
+    if (secret) {
+      const auth = req.headers.authorization ?? "";
+      if (auth !== `Bearer ${secret}`) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    }
+
+    // Require Gmail credentials
+    if (!process.env.GMAIL_REFRESH_TOKEN) {
+      return res.status(200).json({
+        status: "skipped",
+        synced: 0,
+        skipped: 0,
+        errors: [],
+        message: "GMAIL_REFRESH_TOKEN not configured — Gmail sync disabled",
+      });
+    }
+
+    const scriptPath = path.join(__dirname, "scripts", "gmail_invoice_sync.cjs");
+    const child = fork(scriptPath, [], {
+      env: {
+        ...process.env,
+        SUPABASE_URL:          process.env.SUPABASE_URL          ?? "https://yoyrwrdzivygufbzckdv.supabase.co",
+        SUPABASE_ANON_KEY:     process.env.SUPABASE_ANON_KEY     ?? "",
+        GMAIL_CLIENT_ID:       process.env.GMAIL_CLIENT_ID       ?? "",
+        GMAIL_CLIENT_SECRET:   process.env.GMAIL_CLIENT_SECRET   ?? "",
+        GMAIL_REFRESH_TOKEN:   process.env.GMAIL_REFRESH_TOKEN   ?? "",
+      },
+      detached: false,
+      silent: true,
+    });
+
+    let output = "";
+    let result: any = { synced: 0, skipped: 0, errors: [] };
+    child.stdout?.on("data", (d: Buffer) => { output += d.toString(); });
+    child.stderr?.on("data", (d: Buffer) => { output += d.toString(); });
+
+    // Run synchronously (wait up to 120s) so cron can read result
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => {
+        child.kill();
+        resolve();
+      }, 120_000);
+      child.on("close", (code) => {
+        clearTimeout(timeout);
+        // Try to parse last JSON line from stdout
+        const lines = output.split("\n").filter(Boolean);
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try { result = JSON.parse(lines[i]); break; } catch {}
+        }
+        resolve();
+      });
+    });
+
+    await supabase.from("audit_log").insert({
+      table_name:  "gmail_invoice_sync",
+      record_id:   null,
+      action:      "create",
+      description: `Gmail invoice sync: ${result.synced} synced, ${result.skipped} skipped, ${result.errors?.length ?? 0} errors`,
+      actor:       "system",
+      new_values:  { result, output: output.slice(-2000) },
+    }).catch(() => {}); // non-fatal
+
+    res.json({
+      status: "ok",
+      synced:  result.synced  ?? 0,
+      skipped: result.skipped ?? 0,
+      errors:  result.errors  ?? [],
+    });
+  });
+
   // GET /api/sync/airtable/log  — recent sync log entries
   app.get("/api/sync/airtable/log", async (req, res) => {
     const limit = Number(req.query.limit) || 50;
@@ -2062,7 +2136,14 @@ Founders Capital`;
 
       if (!airtableRes.ok) {
         const text = await airtableRes.text();
-        return res.status(airtableRes.status).json({ error: text });
+        let parsed: any;
+        try { parsed = JSON.parse(text); } catch { parsed = { error: { message: text } }; }
+        const msg = parsed?.error?.message ?? text;
+        const isPermission = msg.includes("INVALID_PERMISSIONS") || airtableRes.status === 403;
+        const displayMsg = isPermission
+          ? `Airtable token permission error: the AIRTABLE_PAT on Railway must have 'data.records:read' scope AND access to the 'Founders Capital 2.0' base. Update the token at airtable.com/create/tokens.`
+          : msg;
+        return res.status(airtableRes.status).json({ error: displayMsg });
       }
 
       const json: any = await airtableRes.json();
