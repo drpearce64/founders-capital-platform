@@ -83,7 +83,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { entity_id } = req.query;
     let query = supabase
       .from("investor_commitments")
-      .select("*, investors(full_name, email, investor_type), entities(name, short_code)")
+      .select("*, investors(full_name, email, investor_type), entities(name, short_code, entity_type)")
       .is("archived_at", null);
 
     if (entity_id) query = query.eq("entity_id", entity_id as string);
@@ -111,7 +111,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { entity_id } = req.query;
     let query = supabase
       .from("investments")
-      .select("*, entities(name, short_code)")
+      .select("*, entities(name, short_code, entity_type)")
       .is("archived_at", null);
 
     if (entity_id) query = query.eq("entity_id", entity_id as string);

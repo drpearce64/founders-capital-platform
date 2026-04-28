@@ -179,8 +179,9 @@ export default function Dashboard() {
 
   // ── Computed metrics — always derived from filtered queries ─────────────────
   const filteredCommitments = (commitments as any[]).filter(c =>
-    // exclude Cayman commitments when showing "all"
-    !c.entities?.short_code?.startsWith("FC-CAYMAN")
+    // Delaware dashboard: series SPVs only (exclude Cayman and non-SPV entities)
+    !c.entities?.short_code?.startsWith("FC-CAYMAN") &&
+    c.entities?.entity_type === "series_spv"
   );
 
   const totalCommitted  = filteredCommitments.reduce((s, c) => s + parseFloat(c.committed_amount || 0), 0);
@@ -189,7 +190,8 @@ export default function Dashboard() {
   const uncalled        = totalCommitted - totalCalled;
 
   const filteredInvestments = (investments as any[]).filter(i =>
-    !i.entities?.short_code?.startsWith("FC-CAYMAN")
+    !i.entities?.short_code?.startsWith("FC-CAYMAN") &&
+    i.entities?.entity_type === "series_spv"
   );
   const totalCost = filteredInvestments.reduce((s, i) => s + parseFloat(i.cost_basis  || 0), 0);
   const totalFV   = filteredInvestments.reduce((s, i) => s + parseFloat(i.current_fair_value || 0), 0);
