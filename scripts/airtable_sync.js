@@ -483,7 +483,7 @@ async function syncYC() {
 
   // ── 4a: Sync yc_deals from Deals table (YC-named rows only) ──────────────
   const dealRecords = await fetchAirtableTable(AIRTABLE_TABLES.deals, [
-    "Name",
+    "CompanyName",
     "Status",
     "Stage",
     "Batch",
@@ -498,7 +498,7 @@ async function syncYC() {
     "Closing Date",
     "Quarter",
     "Year",
-    "Description",
+    "Company Description",
     "URL",
     "Deal Code",
     "Business Type",
@@ -508,7 +508,7 @@ async function syncYC() {
     "Total round size",
   ]);
 
-  const ycDealRecords = dealRecords.filter(r => String(r.fields["Name"] || "").includes("(YC"));
+  const ycDealRecords = dealRecords.filter(r => String(r.fields["CompanyName"] || "").includes("(YC"));
   console.log(`  Found ${ycDealRecords.length} YC deals in Airtable`);
 
   // Build airtable_id → supabase id map for later use in holdings
@@ -517,7 +517,7 @@ async function syncYC() {
   for (const rec of ycDealRecords) {
     const f = rec.fields;
     const airtable_id = rec.id;
-    const name = String(f["Name"] || "").trim();
+    const name = String(f["CompanyName"] || "").trim();
     const batch = extractBatch(name);
 
     const row = {
@@ -537,7 +537,7 @@ async function syncYC() {
       closing_date:          safeDate(f["Closing Date"]),
       quarter:               f["Quarter"] ? String(f["Quarter"]) : null,
       year:                  f["Year"]    ? String(f["Year"])    : null,
-      description:           f["Description"] ? String(f["Description"]) : null,
+      description:           f["Company Description"] ? String(f["Company Description"]) : null,
       url:                   f["URL"]    ? String(f["URL"])    : null,
       deal_code:             f["Deal Code"] ? String(f["Deal Code"]) : null,
       business_type:         f["Business Type"] ? String(f["Business Type"]) : null,
