@@ -492,22 +492,22 @@ Founders Capital`;
   // ── Dashboard Summary ──────────────────────────────────────────────────────
 
   app.get("/api/dashboard", async (_req, res) => {
-    // Delaware-only: exclude Cayman Islands jurisdiction from all aggregates
-    const delawareEntityIds = await supabase
+    // Delaware Series SPVs only — restricted to FC-VECTOR-* entities
+    const vectorEntitiesRes = await supabase
       .from("entities")
       .select("id")
-      .eq("jurisdiction", "Delaware");
-    const delawareIds = (delawareEntityIds.data || []).map((e: any) => e.id);
+      .like("short_code", "FC-VECTOR-%");
+    const vectorIds = (vectorEntitiesRes.data || []).map((e: any) => e.id);
 
     const [entitiesRes, commitmentsRes, investmentsRes, callsRes] = await Promise.all([
       supabase.from("entities").select("*, investments(company_name, status)")
-        .eq("jurisdiction", "Delaware").is("archived_at", null),
+        .like("short_code", "FC-VECTOR-%").is("archived_at", null),
       supabase.from("investor_commitments").select("committed_amount, called_amount, status, entity_id")
-        .in("entity_id", delawareIds).is("archived_at", null),
+        .in("entity_id", vectorIds).is("archived_at", null),
       supabase.from("investments").select("cost_basis, current_fair_value, company_name, entity_id, status, entities(short_code, jurisdiction)")
-        .in("entity_id", delawareIds).is("archived_at", null),
+        .in("entity_id", vectorIds).is("archived_at", null),
       supabase.from("capital_calls").select("total_call_amount, status, entity_id")
-        .in("entity_id", delawareIds),
+        .in("entity_id", vectorIds),
     ]);
 
     if (entitiesRes.error) return res.status(500).json({ error: entitiesRes.error.message });
