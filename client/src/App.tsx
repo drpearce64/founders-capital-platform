@@ -29,6 +29,7 @@ import FCInvestments from "./pages/FCInvestments";
 import OtherInvestments from "./pages/OtherInvestments";
 import YCDashboard from "./pages/YCDashboard";
 import InvestorRegister from "./pages/InvestorRegister";
+import PortfolioSummary from "./pages/PortfolioSummary";
 
 // Cayman pages
 import CaymanDashboard from "./pages/CaymanDashboard";
@@ -70,6 +71,7 @@ export default function App() {
             <Route path="/other-investments"      component={OtherInvestments} />
             <Route path="/yc-portfolio"          component={YCDashboard} />
             <Route path="/investor-register"     component={InvestorRegister} />
+            <Route path="/portfolio"             component={PortfolioSummary} />
 
             {/* ── Cayman routes ───────────────────────────────── */}
             <Route path="/cayman"                    component={CaymanDashboard} />

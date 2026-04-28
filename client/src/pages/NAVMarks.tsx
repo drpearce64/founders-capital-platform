@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  TrendingUp, Plus, AlertTriangle, ChevronDown, ChevronRight,
+  TrendingUp, AlertTriangle, ChevronDown, ChevronRight,
   DollarSign, BarChart3, Clock, CheckCircle2, ExternalLink,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 
@@ -123,17 +122,8 @@ function YCBatchSection({ batch, deals }: { batch: string; deals: any[] }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function NAVMarks() {
   const qc = useQueryClient();
-  const { toast } = useToast();
-  const [showForm, setShowForm] = useState(false);
   const [selectedSpv, setSelectedSpv] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"portfolio" | "marks" | "nav-per-lp">("portfolio");
-  const [form, setForm] = useState({
-    entity_id: "",
-    mark_date: new Date().toISOString().split("T")[0],
-    fair_value: "",
-    cost_basis: "",
-    valuation_notes: "",
-  });
 
   // Portfolio data (new endpoint)
   const { data: portfolio, isLoading: portLoading } = useQuery<any>({
@@ -166,17 +156,7 @@ export default function NAVMarks() {
     !e.short_code?.startsWith("FC-CAYMAN") && e.entity_type === "series_spv"
   );
 
-  const addMark = useMutation({
-    mutationFn: (body: any) => apiRequest("POST", "/api/nav-marks", body).then(r => r.json()),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/nav-marks"] });
-      qc.invalidateQueries({ queryKey: ["/api/nav-marks/portfolio"] });
-      toast({ title: "Fair value mark recorded" });
-      setShowForm(false);
-      setForm({ entity_id: "", mark_date: new Date().toISOString().split("T")[0], fair_value: "", cost_basis: "", valuation_notes: "" });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
+
 
   const delaware = portfolio?.delaware ?? [];
   const yc = portfolio?.yc;
@@ -276,105 +256,7 @@ export default function NAVMarks() {
         />
       </div>
 
-      {/* ── Record Mark form ─────────────────────────────────────────── */}
-      {showForm && (
-        <div className="bg-white border border-emerald-200 rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">Record Quarterly Mark</h2>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              addMark.mutate({
-                ...form,
-                fair_value: parseFloat(form.fair_value),
-                cost_basis: form.cost_basis ? parseFloat(form.cost_basis) : undefined,
-              });
-            }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-4"
-          >
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Vector (SPV) *</label>
-              <select
-                value={form.entity_id}
-                onChange={e => setForm({ ...form, entity_id: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              >
-                <option value="">Select Vector…</option>
-                {spvs.map((spv: any) => {
-                  const label = VECTOR_LABEL[spv.short_code] ?? spv.short_code;
-                  const matching = delaware.find((i: any) => i.entity_id === spv.id);
-                  return (
-                    <option key={spv.id} value={spv.id}>
-                      {label}{matching?.company_name ? ` — ${matching.company_name}` : ""}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Mark Date *</label>
-              <input
-                type="date"
-                value={form.mark_date}
-                onChange={e => setForm({ ...form, mark_date: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Fair Value (total SPV) *</label>
-              <input
-                type="number"
-                value={form.fair_value}
-                onChange={e => setForm({ ...form, fair_value: e.target.value })}
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Cost Basis (if updating)</label>
-              <input
-                type="number"
-                value={form.cost_basis}
-                onChange={e => setForm({ ...form, cost_basis: e.target.value })}
-                placeholder="Leave blank to use committed amount"
-                min="0"
-                step="0.01"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Valuation Notes</label>
-              <input
-                type="text"
-                value={form.valuation_notes}
-                onChange={e => setForm({ ...form, valuation_notes: e.target.value })}
-                placeholder="e.g. Based on Series B round at $300M pre-money, Q1 2026"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            <div className="md:col-span-2 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={addMark.isPending}
-                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {addMark.isPending ? "Saving…" : "Record Mark"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      {/* Record Mark form removed — use Portfolio Summary → Mark button on each position */}
 
       {/* ── Tabs ─────────────────────────────────────────────────────── */}
       <div className="border-b border-gray-200">

@@ -95,6 +95,22 @@ const otherSections: Record<string, string> = {
   admin:    "Administration",
 };
 
+// ── Portfolio Summary nav ───────────────────────────────────────────────────
+const portfolioNav = [
+  { href: "/portfolio",        label: "Portfolio Summary",  icon: BarChart3,       section: "overview" },
+  { href: "/nav-marks",        label: "Mark History",       icon: TrendingUp,      section: "overview" },
+  { href: "/group-structure",  label: "Group Structure",    icon: Network,         section: "group" },
+  { href: "/investor-register",label: "Investor Register",  icon: BookUser,        section: "group" },
+  { href: "/documents",        label: "Documents",          icon: FolderOpen,      section: "admin" },
+  { href: "/audit-log",        label: "Audit Log",          icon: Shield,          section: "admin" },
+];
+
+const portfolioSections: Record<string, string> = {
+  overview: "Overview",
+  group:    "Group",
+  admin:    "Administration",
+};
+
 // ── FC Investments nav ────────────────────────────────────────────────────────
 const fcInvestmentsNav = [
   { href: "/fc-investments",     label: "FC Investments",     icon: Briefcase,       section: "overview" },
@@ -111,20 +127,22 @@ const fcInvestmentsSections: Record<string, string> = {
 };
 
 // ── Jurisdiction config ───────────────────────────────────────────────────────
-type Jurisdiction = "delaware" | "cayman" | "yc" | "other" | "fc";
+type Jurisdiction = "delaware" | "cayman" | "yc" | "other" | "fc" | "portfolio";
 
 const JURISDICTIONS: Record<Jurisdiction, { flag: string; label: string; sub: string; homeRoute: string }> = {
-  delaware: { flag: "🇺🇸", label: "Delaware",    sub: "Series LP",     homeRoute: "/" },
-  cayman:   { flag: "🇰🇾", label: "Cayman",      sub: "Exempted LP",   homeRoute: "/cayman" },
-  yc:       { flag: "🇺🇸", label: "YC",          sub: "Portfolio",     homeRoute: "/yc-portfolio" },
-  other:    { flag: "🌐",  label: "Other",       sub: "Investments",   homeRoute: "/other-investments" },
-  fc:       { flag: "💼",  label: "FC",          sub: "Investments",   homeRoute: "/fc-investments" },
+  delaware:  { flag: "🇺🇸", label: "Delaware",    sub: "Series LP",     homeRoute: "/" },
+  cayman:    { flag: "🇰🇾", label: "Cayman",      sub: "Exempted LP",   homeRoute: "/cayman" },
+  yc:        { flag: "🇺🇸", label: "YC",          sub: "Portfolio",     homeRoute: "/yc-portfolio" },
+  other:     { flag: "🌐",  label: "Other",       sub: "Investments",   homeRoute: "/other-investments" },
+  portfolio: { flag: "📊",  label: "Portfolio",   sub: "Summary",       homeRoute: "/portfolio" },
+  fc:        { flag: "💼",  label: "FC",          sub: "Investments",   homeRoute: "/fc-investments" },
 };
 
 function detectJurisdiction(path: string): Jurisdiction {
   if (path.startsWith("/cayman"))             return "cayman";
   if (path.startsWith("/yc-portfolio"))       return "yc";
   if (path.startsWith("/other-investments"))  return "other";
+  if (path.startsWith("/portfolio"))          return "portfolio";
   if (path.startsWith("/fc-investments"))     return "fc";
   return "delaware";
 }
@@ -138,15 +156,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (j !== jurisdiction) navigate(JURISDICTIONS[j].homeRoute);
   }
 
-  const nav      = jurisdiction === "delaware" ? delawareNav
-                 : jurisdiction === "cayman"   ? caymanNav
-                 : jurisdiction === "yc"       ? ycNav
-                 : jurisdiction === "other"    ? otherNav
+  const nav      = jurisdiction === "delaware"  ? delawareNav
+                 : jurisdiction === "cayman"    ? caymanNav
+                 : jurisdiction === "yc"        ? ycNav
+                 : jurisdiction === "other"     ? otherNav
+                 : jurisdiction === "portfolio" ? portfolioNav
                  : fcInvestmentsNav;
-  const sections = jurisdiction === "delaware" ? delawareSections
-                 : jurisdiction === "cayman"   ? caymanSections
-                 : jurisdiction === "yc"       ? ycSections
-                 : jurisdiction === "other"    ? otherSections
+  const sections = jurisdiction === "delaware"  ? delawareSections
+                 : jurisdiction === "cayman"    ? caymanSections
+                 : jurisdiction === "yc"        ? ycSections
+                 : jurisdiction === "other"     ? otherSections
+                 : jurisdiction === "portfolio" ? portfolioSections
                  : fcInvestmentsSections;
   const jInfo    = JURISDICTIONS[jurisdiction];
 
@@ -193,7 +213,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             View
           </p>
           <div className="grid grid-cols-3 gap-1">
-            {(["delaware", "cayman", "yc", "other", "fc"] as Jurisdiction[]).map((key) => {
+            {(["delaware", "cayman", "yc", "other", "portfolio", "fc"] as Jurisdiction[]).map((key) => {
               const info   = JURISDICTIONS[key];
               const active = jurisdiction === key;
               return (
