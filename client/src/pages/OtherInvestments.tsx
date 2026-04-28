@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
-import { TrendingUp, DollarSign, Briefcase, BarChart3, Search, ExternalLink, Users } from "lucide-react";
+import { TrendingUp, DollarSign, Briefcase, BarChart3, Search, ExternalLink, Users, ArrowUpRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number, compact = false) {
@@ -117,10 +118,259 @@ function CompanyLogo({ name, size = 36 }: { name: string; size?: number }) {
   );
 }
 
+// ── Drill content ─────────────────────────────────────────────────────────────
+type OtherDrillKey = "cost" | "fv" | "unrealised" | "positions";
+
+function OtherDrillContent({ drillKey, investments, investorCounts }: {
+  drillKey: OtherDrillKey;
+  investments: any[];
+  investorCounts: Record<string, number>;
+}) {
+  const TH = "text-xs font-medium uppercase tracking-wider pb-2 text-left whitespace-nowrap";
+  const TD = "py-2.5 text-xs";
+  const thStyle = { color: "hsl(var(--muted-foreground))", borderBottom: "1px solid hsl(var(--border))" };
+  const fmtD = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+  const totalCost = investments.reduce((s, i) => s + parseFloat(i.cost_basis || 0), 0);
+  const totalFV   = investments.reduce((s, i) => s + parseFloat(i.current_fair_value ?? i.cost_basis ?? 0), 0);
+
+  if (drillKey === "cost") {
+    const sorted = [...investments].sort((a, b) => parseFloat(b.cost_basis || 0) - parseFloat(a.cost_basis || 0));
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr>
+            <th className={TH} style={thStyle}>Company</th>
+            <th className={TH} style={thStyle}>Series</th>
+            <th className={TH} style={thStyle}>Stage</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Cost Basis</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>% of Total</th>
+          </tr></thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {sorted.map((inv: any) => {
+              const cost = parseFloat(inv.cost_basis || 0);
+              return (
+                <tr key={inv.id}>
+                  <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                    <div className="flex items-center gap-2">
+                      <CompanyLogo name={inv.company_name || ""} size={24} />
+                      <span className="font-medium">{inv.company_name}</span>
+                    </div>
+                  </td>
+                  <td className={TD + " font-mono"} style={{ color: "hsl(var(--muted-foreground))" }}>{inv.entities?.short_code ?? "—"}</td>
+                  <td className={TD}>
+                    {inv.stage ? (
+                      <span className="px-1.5 py-0.5 rounded-full text-xs" style={{ background: `${STAGE_COLORS[inv.stage] || "#868E96"}22`, color: STAGE_COLORS[inv.stage] || "#868E96" }}>{inv.stage}</span>
+                    ) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+                  </td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>{fmtD(cost)}</td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--muted-foreground))" }}>
+                    {totalCost > 0 ? ((cost / totalCost) * 100).toFixed(1) + "%" : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot><tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+            <td className="py-2.5 text-sm font-semibold" colSpan={3} style={{ color: "hsl(var(--foreground))" }}>{sorted.length} positions</td>
+            <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmtD(totalCost)}</td>
+            <td />
+          </tr></tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  if (drillKey === "fv") {
+    const sorted = [...investments].sort((a, b) =>
+      parseFloat(b.current_fair_value ?? b.cost_basis ?? 0) - parseFloat(a.current_fair_value ?? a.cost_basis ?? 0)
+    );
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr>
+            <th className={TH} style={thStyle}>Company</th>
+            <th className={TH} style={thStyle}>Stage</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Cost</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Fair Value</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>MOIC</th>
+          </tr></thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {sorted.map((inv: any) => {
+              const cost = parseFloat(inv.cost_basis || 0);
+              const fv   = parseFloat(inv.current_fair_value ?? inv.cost_basis ?? 0);
+              const moic = cost > 0 ? fv / cost : 1;
+              return (
+                <tr key={inv.id}>
+                  <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                    <div className="flex items-center gap-2">
+                      <CompanyLogo name={inv.company_name || ""} size={24} />
+                      <span className="font-medium">{inv.company_name}</span>
+                    </div>
+                  </td>
+                  <td className={TD}>
+                    {inv.stage ? (
+                      <span className="px-1.5 py-0.5 rounded-full text-xs" style={{ background: `${STAGE_COLORS[inv.stage] || "#868E96"}22`, color: STAGE_COLORS[inv.stage] || "#868E96" }}>{inv.stage}</span>
+                    ) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+                  </td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--muted-foreground))" }}>{fmtD(cost)}</td>
+                  <td className={TD + " font-mono text-right font-semibold"} style={{ color: "hsl(var(--foreground))" }}>{fmtD(fv)}</td>
+                  <td className={TD + " font-mono text-right font-semibold"} style={{ color: moic >= 1 ? "#0CA678" : "#FA5252" }}>{moic.toFixed(2)}x</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot><tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+            <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>Total</td>
+            <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{fmtD(totalCost)}</td>
+            <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "hsl(var(--foreground))" }}>{fmtD(totalFV)}</td>
+            <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: totalFV >= totalCost ? "#0CA678" : "#FA5252" }}>
+              {totalCost > 0 ? (totalFV / totalCost).toFixed(2) + "x" : "—"}
+            </td>
+          </tr></tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  if (drillKey === "unrealised") {
+    const sorted = [...investments]
+      .map(i => ({ ...i, _gain: parseFloat(i.current_fair_value ?? i.cost_basis ?? 0) - parseFloat(i.cost_basis || 0) }))
+      .sort((a, b) => b._gain - a._gain);
+    const totalGain = totalFV - totalCost;
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr>
+            <th className={TH} style={thStyle}>Company</th>
+            <th className={TH} style={thStyle}>Stage</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Cost</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Fair Value</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Gain / Loss</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Return</th>
+          </tr></thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {sorted.map((inv: any) => {
+              const cost = parseFloat(inv.cost_basis || 0);
+              const fv   = parseFloat(inv.current_fair_value ?? inv.cost_basis ?? 0);
+              const gain = inv._gain;
+              return (
+                <tr key={inv.id}>
+                  <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                    <div className="flex items-center gap-2">
+                      <CompanyLogo name={inv.company_name || ""} size={24} />
+                      <span className="font-medium">{inv.company_name}</span>
+                    </div>
+                  </td>
+                  <td className={TD}>
+                    {inv.stage ? (
+                      <span className="px-1.5 py-0.5 rounded-full text-xs" style={{ background: `${STAGE_COLORS[inv.stage] || "#868E96"}22`, color: STAGE_COLORS[inv.stage] || "#868E96" }}>{inv.stage}</span>
+                    ) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+                  </td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--muted-foreground))" }}>{fmtD(cost)}</td>
+                  <td className={TD + " font-mono text-right"} style={{ color: "hsl(var(--foreground))" }}>{fmtD(fv)}</td>
+                  <td className={TD + " font-mono text-right font-medium"} style={{ color: gain >= 0 ? "#0CA678" : "#FA5252" }}>
+                    {gain >= 0 ? "+" : ""}{fmtD(gain)}
+                  </td>
+                  <td className={TD + " font-mono text-right"} style={{ color: gain >= 0 ? "#0CA678" : "#FA5252" }}>
+                    {cost > 0 ? `${gain >= 0 ? "+" : ""}${((gain / cost) * 100).toFixed(1)}%` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot><tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+            <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>Total</td>
+            <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{fmtD(totalCost)}</td>
+            <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--foreground))" }}>{fmtD(totalFV)}</td>
+            <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: totalGain >= 0 ? "#0CA678" : "#FA5252" }}>
+              {totalGain >= 0 ? "+" : ""}{fmtD(totalGain)}
+            </td>
+            <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: totalGain >= 0 ? "#0CA678" : "#FA5252" }}>
+              {totalCost > 0 ? `${totalGain >= 0 ? "+" : ""}${((totalGain / totalCost) * 100).toFixed(1)}%` : "—"}
+            </td>
+          </tr></tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  if (drillKey === "positions") {
+    const sorted = [...investments].sort((a, b) => (a.company_name || "").localeCompare(b.company_name || ""));
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr>
+            <th className={TH} style={thStyle}>Company</th>
+            <th className={TH} style={thStyle}>Series</th>
+            <th className={TH} style={thStyle}>Stage</th>
+            <th className={TH} style={thStyle}>Instrument</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "right" }}>Investors</th>
+            <th className={TH} style={{ ...thStyle, textAlign: "center" }}>Status</th>
+          </tr></thead>
+          <tbody className="divide-y" style={{ borderColor: "hsl(var(--border))" }}>
+            {sorted.map((inv: any) => {
+              const count = investorCounts[inv.entity_id] ?? null;
+              const domain = getDomain(inv.company_name || "");
+              const website = inv.company_website || (domain ? `https://${domain}` : null);
+              return (
+                <tr key={inv.id}>
+                  <td className={TD} style={{ color: "hsl(var(--foreground))" }}>
+                    <div className="flex items-center gap-2">
+                      <CompanyLogo name={inv.company_name || ""} size={24} />
+                      <div className="flex flex-col">
+                        <span className="font-medium">{inv.company_name}</span>
+                        {website && (
+                          <a href={website} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-0.5 text-xs hover:underline"
+                            style={{ color: "hsl(231 70% 62%)" }}
+                            onClick={e => e.stopPropagation()}>
+                            <ExternalLink size={9} />{domain}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className={TD + " font-mono"} style={{ color: "hsl(var(--muted-foreground))" }}>{inv.entities?.short_code ?? "—"}</td>
+                  <td className={TD}>
+                    {inv.stage ? (
+                      <span className="px-1.5 py-0.5 rounded-full text-xs" style={{ background: `${STAGE_COLORS[inv.stage] || "#868E96"}22`, color: STAGE_COLORS[inv.stage] || "#868E96" }}>{inv.stage}</span>
+                    ) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+                  </td>
+                  <td className={TD} style={{ color: "hsl(var(--muted-foreground))" }}>{inv.instrument_type?.replace(/_/g, " ") || "—"}</td>
+                  <td className={TD + " text-right font-mono"} style={{ color: "hsl(var(--foreground))" }}>
+                    {count != null ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <Users size={11} style={{ color: "hsl(var(--muted-foreground))" }} />
+                        {count}
+                      </div>
+                    ) : "—"}
+                  </td>
+                  <td className={TD + " text-center"}>
+                    <span className="text-xs px-1.5 py-0.5 rounded capitalize"
+                      style={{ background: inv.status === "active" ? "#0CA67822" : "hsl(var(--muted))", color: inv.status === "active" ? "#0CA678" : "hsl(var(--muted-foreground))" }}>
+                      {inv.status ?? "active"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot><tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
+            <td className="py-2.5 text-sm font-semibold" colSpan={6} style={{ color: "hsl(var(--foreground))" }}>{sorted.length} positions</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ── component ─────────────────────────────────────────────────────────────────
 export default function OtherInvestments() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"cost" | "fv" | "name">("fv");
+  const [activeDrill, setActiveDrill] = useState<OtherDrillKey | null>(null);
 
   const { data: allInvestments = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/investments", "other"],
@@ -189,20 +439,55 @@ export default function OtherInvestments() {
         </div>
       </div>
 
+      {/* Drill-down Sheet */}
+      <Sheet open={activeDrill !== null} onOpenChange={open => { if (!open) setActiveDrill(null); }}>
+        <SheetContent side="right" className="w-[620px] sm:max-w-[620px] overflow-y-auto">
+          {activeDrill && (
+            <>
+              <SheetHeader className="mb-6">
+                <SheetTitle className="text-base">
+                  {activeDrill === "cost"       && "Cost Deployed"}
+                  {activeDrill === "fv"         && "Portfolio Fair Value"}
+                  {activeDrill === "unrealised" && "Unrealised Gain / Loss"}
+                  {activeDrill === "positions"  && "All Positions"}
+                </SheetTitle>
+                <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                  {activeDrill === "cost"       && "Cost basis across all Other investments, largest first"}
+                  {activeDrill === "fv"         && "Fair value vs cost — sorted by fair value"}
+                  {activeDrill === "unrealised" && "Unrealised gain or loss vs cost basis — best performers first"}
+                  {activeDrill === "positions"  && "All active positions — A to Z"}
+                </p>
+              </SheetHeader>
+              <OtherDrillContent drillKey={activeDrill} investments={investments} investorCounts={investorCounts} />
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {[
-          { label: "Cost Deployed",  value: fmt(totalCost, true),      sub: `${investments.length} positions`,               icon: Briefcase,  accent: "#3B5BDB" },
-          { label: "Portfolio FV",   value: fmt(totalFV, true),        sub: `MOIC ${moic.toFixed(2)}x`,                      icon: BarChart3,  accent: "#0CA678" },
-          { label: "Unrealised G/L", value: fmt(unrealised, true),     sub: `${unrealised >= 0 ? "+" : ""}${((unrealised / (totalCost || 1)) * 100).toFixed(1)}% on cost`, icon: TrendingUp, accent: unrealised >= 0 ? "#0CA678" : "#FA5252" },
-          { label: "Positions",      value: String(investments.length), sub: "active investments",                            icon: DollarSign, accent: "#F59F00" },
-        ].map(({ label, value, sub, icon: Icon, accent }) => (
-          <div key={label} className="rounded-xl border p-4" style={{ background: card, borderColor: border }}>
+        {([
+          { label: "Cost Deployed",  value: fmt(totalCost, true),      sub: `${investments.length} positions`,               icon: Briefcase,  accent: "#3B5BDB", drill: "cost"       as OtherDrillKey },
+          { label: "Portfolio FV",   value: fmt(totalFV, true),        sub: `MOIC ${moic.toFixed(2)}x`,                      icon: BarChart3,  accent: "#0CA678", drill: "fv"         as OtherDrillKey },
+          { label: "Unrealised G/L", value: fmt(unrealised, true),     sub: `${unrealised >= 0 ? "+" : ""}${((unrealised / (totalCost || 1)) * 100).toFixed(1)}% on cost`, icon: TrendingUp, accent: unrealised >= 0 ? "#0CA678" : "#FA5252", drill: "unrealised" as OtherDrillKey },
+          { label: "Positions",      value: String(investments.length), sub: "active investments",                            icon: DollarSign, accent: "#F59F00", drill: "positions"  as OtherDrillKey },
+        ] as const).map(({ label, value, sub, icon: Icon, accent, drill }) => (
+          <div
+            key={label}
+            onClick={() => setActiveDrill(drill)}
+            className="rounded-xl border p-4 cursor-pointer transition-all duration-150"
+            style={{ background: card, borderColor: border }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${accent}88`; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = border; }}
+          >
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: muted }}>{label}</span>
-              <span className="rounded-lg p-1.5" style={{ background: `${accent}22` }}>
-                <Icon size={14} style={{ color: accent }} />
-              </span>
+              <div className="flex items-center gap-1.5">
+                <ArrowUpRight size={11} style={{ color: muted, opacity: 0.5 }} />
+                <span className="rounded-lg p-1.5" style={{ background: `${accent}22` }}>
+                  <Icon size={14} style={{ color: accent }} />
+                </span>
+              </div>
             </div>
             <div className="text-xl font-bold font-mono" style={{ color: text }}>{value}</div>
             <div className="text-xs mt-0.5" style={{ color: muted }}>{sub}</div>
