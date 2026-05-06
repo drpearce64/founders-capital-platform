@@ -891,6 +891,31 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* ── Commitment Overview (single series) ── */}
+      {selectedEntity && (
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "hsl(var(--muted-foreground))" }}>Commitment Overview</h2>
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { label: "Gross Allocated Amount",          value: selectedEntity.gross_allocated_amount },
+              { label: "Funds Received",                  value: selectedEntity.funds_received },
+              { label: "Vehicle Subscription (Signed)",   value: selectedEntity.vehicle_subscription_amount },
+              { label: "Final Investment (Deal Currency)",value: selectedEntity.final_investment_usd },
+              { label: "Access Fees Forecast",            value: selectedEntity.access_fees_forecast },
+              { label: "Access Fees Generated",           value: selectedEntity.access_fees_generated },
+            ].map(({ label, value }) => (
+              <div key={label} className="rounded-xl border px-5 py-4"
+                style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</div>
+                <div className="text-lg font-semibold font-mono" style={{ color: "hsl(var(--foreground))" }}>
+                  {value != null ? fmt(parseFloat(value)) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Row 2 ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KPICard
