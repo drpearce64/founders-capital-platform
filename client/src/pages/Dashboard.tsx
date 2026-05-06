@@ -901,29 +901,64 @@ export default function Dashboard() {
       </div>
 
       {/* ── Commitment Overview (single series) ── */}
-      {selectedEntity && (
-        <div className="mb-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "hsl(var(--muted-foreground))" }}>Commitment Overview</h2>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: "Gross Allocated Amount",          value: selectedEntity.gross_allocated_amount },
-              { label: "Funds Received",                  value: selectedEntity.funds_received },
-              { label: "FC Investment",   value: fcGroupCommitment?.committed_amount ?? null },
-              { label: "Final Investment (Deal Currency)",value: selectedEntity.final_investment_usd },
-              { label: "Access Fees Forecast",            value: selectedEntity.access_fees_forecast },
-              { label: "Access Fees Generated",           value: selectedEntity.access_fees_generated },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-xl border px-5 py-4"
-                style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-                <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</div>
-                <div className="text-lg font-semibold font-mono" style={{ color: "hsl(var(--foreground))" }}>
-                  {value != null ? fmt(parseFloat(value)) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
-                </div>
-              </div>
-            ))}
+      {selectedEntity && (() => {
+        const grossAlloc   = selectedEntity.gross_allocated_amount != null ? parseFloat(selectedEntity.gross_allocated_amount) : null;
+        const fundsRcvd    = selectedEntity.funds_received         != null ? parseFloat(selectedEntity.funds_received)         : null;
+        const vehicleSub   = selectedEntity.vehicle_subscription_amount != null ? parseFloat(selectedEntity.vehicle_subscription_amount) : null;
+        const finalInv     = selectedEntity.final_investment_usd   != null ? parseFloat(selectedEntity.final_investment_usd)   : null;
+        const feesForecast = selectedEntity.access_fees_forecast   != null ? parseFloat(selectedEntity.access_fees_forecast)   : null;
+        const feesGen      = selectedEntity.access_fees_generated  != null ? parseFloat(selectedEntity.access_fees_generated)  : null;
+
+        const allocCheck = (grossAlloc != null && fundsRcvd != null)   ? grossAlloc - fundsRcvd   : null;
+        const subCheck   = (vehicleSub != null && finalInv  != null)   ? vehicleSub - finalInv    : null;
+        const feesCheck  = (feesForecast != null && feesGen != null)   ? feesForecast - feesGen   : null;
+
+        const isZero = (v: number | null, tol = 1) => v != null && Math.abs(v) < tol;
+
+        const DataCard = ({ label, value }: { label: string; value: number | null }) => (
+          <div className="rounded-xl border px-5 py-4"
+            style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+            <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</div>
+            <div className="text-lg font-semibold font-mono" style={{ color: "hsl(var(--foreground))" }}>
+              {value != null ? fmt(value) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+            </div>
           </div>
-        </div>
-      )}
+        );
+
+        const CheckCard = ({ label, value }: { label: string; value: number | null }) => {
+          const ok = isZero(value);
+          const accent = ok ? "#0CA678" : "#F59F00";
+          return (
+            <div className="rounded-xl border px-5 py-4"
+              style={{ background: ok ? "rgba(12,166,120,0.06)" : "rgba(245,159,0,0.06)", borderColor: ok ? "rgba(12,166,120,0.3)" : "rgba(245,159,0,0.4)" }}>
+              <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: accent }}>{label}</div>
+              <div className="text-lg font-semibold font-mono" style={{ color: accent }}>
+                {value != null ? (Math.abs(value) < 1 ? "✓ 0" : fmt(value)) : <span style={{ color: "hsl(var(--muted-foreground))" }}>—</span>}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div className="mb-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "hsl(var(--muted-foreground))" }}>Commitment Overview</h2>
+            <div className="grid grid-cols-3 gap-4">
+              {/* Row 1 */}
+              <DataCard  label="Gross Allocated Amount"         value={grossAlloc} />
+              <DataCard  label="Funds Received"                 value={fundsRcvd} />
+              <CheckCard label="Allocation Check = 0"          value={allocCheck} />
+              {/* Row 2 */}
+              <DataCard  label="Vehicle Subscription (Signed)"  value={vehicleSub} />
+              <DataCard  label="Final Investment (Deal Currency)" value={finalInv} />
+              <CheckCard label="Subscription Amount Check = 0" value={subCheck} />
+              {/* Row 3 */}
+              <DataCard  label="Access Fees Forecast"           value={feesForecast} />
+              <DataCard  label="Access Fees Generated"          value={feesGen} />
+              <CheckCard label="Fees Check = 0"                value={feesCheck} />
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Row 2 ── */}
       <div className="grid grid-cols-2 gap-4 mb-6">
