@@ -358,6 +358,9 @@ function DrillContent({
       .map(c => ({ ...c, _uncalled: parseFloat(c.committed_amount || 0) - parseFloat(c.called_amount || 0) }))
       .filter(c => c._uncalled > 0)
       .sort((a, b) => (a.investors?.full_name ?? "").localeCompare(b.investors?.full_name ?? ""));
+    // Derive totals from the actual rows shown, not entity-level figures
+    const rowTotalUncalled   = sorted.reduce((s, c) => s + c._uncalled, 0);
+    const rowTotalCommitted  = sorted.reduce((s, c) => s + parseFloat(c.committed_amount || 0), 0);
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -402,9 +405,9 @@ function DrillContent({
           <tfoot>
             <tr style={{ borderTop: "2px solid hsl(var(--border))" }}>
               <td className="py-2.5 text-sm font-semibold" colSpan={2} style={{ color: "hsl(var(--foreground))" }}>Total Uncalled</td>
-              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "#F59F00" }}>{fmt(uncalled)}</td>
-              <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{fmt(totalCommitted)}</td>
-              <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{pct(uncalled, totalCommitted)}</td>
+              <td className="py-2.5 text-sm font-mono font-semibold text-right" style={{ color: "#F59F00" }}>{fmt(rowTotalUncalled)}</td>
+              <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{fmt(rowTotalCommitted)}</td>
+              <td className="py-2.5 text-sm font-mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>{pct(rowTotalUncalled, rowTotalCommitted)}</td>
             </tr>
           </tfoot>
         </table>
@@ -700,7 +703,11 @@ export default function Dashboard() {
   })();
 
   const activeCommits   = filteredCommitments.filter(c => c.status === "active").length;
-  const uncalled        = totalCommitted - totalCalled;
+  // Uncalled always derived from LP rows — avoids negative result when funds_received > vehicle_subscription_amount
+  const uncalled = filteredCommitments.reduce((s, c) => {
+    const u = parseFloat(c.committed_amount || 0) - parseFloat(c.called_amount || 0);
+    return s + (u > 0 ? u : 0);
+  }, 0);
 
   const filteredInvestments = (investments as any[]).filter(i =>
     i.entities?.short_code?.startsWith("FC-VECTOR")
