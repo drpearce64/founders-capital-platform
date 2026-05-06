@@ -472,13 +472,17 @@ async function syncCommitments() {
     const committed  = safeNum(f["Final Investment Value"]) ?? 0;
     const received   = safeNum(firstStr(f["Actually Received (from Investments)"])) ?? 0;
     const fee_amount = safeNum(f["Fee"]) ?? 0;
+    // called_amount = amount actually received (funds sent by LP).
+    // If Airtable shows received > 0, use that; otherwise fall back to committed
+    // so fully-paid LPs are not shown as uncalled.
+    const called = received > 0 ? received : committed;
 
     rows.push({
       airtable_id,
       entity_id,
       investor_id,
       committed_amount: committed,
-      called_amount:    fee_amount > 0 ? committed + fee_amount : committed,
+      called_amount:    called,
       funded_amount:    received,
       status:           commit_status,
       fee_rate:         safeNum(f["Discounted fee"]) ?? 0.06,
