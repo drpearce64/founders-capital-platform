@@ -1,5 +1,7 @@
 import { Link, useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import {
   LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield,
   Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw,
@@ -149,6 +151,19 @@ function detectJurisdiction(path: string): Jurisdiction {
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
+  const queryClient = useQueryClient();
+
+  // ── Background sync on app load ───────────────────────────────────────────
+  // Fire-and-forget: trigger Airtable sync immediately, then refresh all
+  // cached queries after 15s so any updated financial fields are shown.
+  useEffect(() => {
+    apiRequest("POST", "/api/sync/airtable").catch(() => {/* silent */});
+    const timer = setTimeout(() => {
+      queryClient.invalidateQueries();
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const jurisdiction = detectJurisdiction(location);
 
