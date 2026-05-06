@@ -35,7 +35,7 @@ type DrillKey =
   | "structure";
 
 const DRILL_META: Record<DrillKey, { title: string; subtitle: string }> = {
-  commitments: { title: "FC Investment", subtitle: "Total FC investment per executed subscription agreement" },
+  commitments: { title: "Vehicle Subscription Amount (Signed)", subtitle: "Signed LP subscription amount per executed SPA" },
   called:      { title: "Funds Received",                       subtitle: "Capital received from LPs" },
   nav:         { title: "Portfolio NAV",     subtitle: "Fair value of all positions" },
   uncalled:    { title: "Uncalled / Outstanding", subtitle: "Subscribed but not yet received" },
@@ -869,7 +869,7 @@ export default function Dashboard() {
       {/* ── Row 1: Fund-level KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         <KPICard
-          label="FC Investment"
+          label="Vehicle Subscription (Signed)"
           value={fmt(totalCommitted)}
           sub={`${lpCount} LP${lpCount !== 1 ? "s" : ""} · ${activeCommits} active`}
           icon={Users} color="#3B5BDB" loading={loading}
@@ -899,7 +899,7 @@ export default function Dashboard() {
             {[
               { label: "Gross Allocated Amount",          value: selectedEntity.gross_allocated_amount },
               { label: "Funds Received",                  value: selectedEntity.funds_received },
-              { label: "FC Investment",   value: selectedEntity.vehicle_subscription_amount },
+              { label: "Vehicle Subscription (Signed)",   value: selectedEntity.vehicle_subscription_amount },
               { label: "Final Investment (Deal Currency)",value: selectedEntity.final_investment_usd },
               { label: "Access Fees Forecast",            value: selectedEntity.access_fees_forecast },
               { label: "Access Fees Generated",           value: selectedEntity.access_fees_generated },

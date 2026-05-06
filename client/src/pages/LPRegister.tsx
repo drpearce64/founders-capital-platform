@@ -80,7 +80,7 @@ export default function LPRegister() {
       {/* Summary row */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label: "FC Investment", value: fmtUSD(totalCommitted) },
+          { label: "Vehicle Subscription (Signed)", value: fmtUSD(totalCommitted) },
           { label: "Funds Received",                 value: fmtUSD(totalCalled) },
           { label: "Uncalled / Outstanding",         value: fmtUSD(outstanding) },
         ].map(s => (
