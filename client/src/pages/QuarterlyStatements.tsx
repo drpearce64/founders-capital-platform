@@ -48,9 +48,14 @@ export default function QuarterlyStatements() {
     queryFn: () => apiRequest("GET", "/api/commitments").then(r => r.json()),
   });
 
+  // Only count commitments to the 5 Vector Series SPVs (FC-VECTOR-I through FC-VECTOR-V)
+  const vectorCommitments = allCommitments.filter((c: any) =>
+    c.entities?.short_code?.startsWith("FC-VECTOR")
+  );
+
   const multiVectorIds = (() => {
     const counts: Record<string, number> = {};
-    allCommitments.forEach((c: any) => {
+    vectorCommitments.forEach((c: any) => {
       counts[c.investor_id] = (counts[c.investor_id] || 0) + 1;
     });
     return Object.entries(counts).filter(([, n]) => n > 1).map(([id]) => id);
@@ -358,7 +363,7 @@ export default function QuarterlyStatements() {
               {multiVectorIds.map(id => {
                 const lp = investors.find((i: any) => i.id === id);
                 if (!lp) return null;
-                const lpCommitments = allCommitments.filter((c: any) => c.investor_id === id);
+                const lpCommitments = vectorCommitments.filter((c: any) => c.investor_id === id);
                 return (
                   <tr key={id} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{lp.full_name}</td>
