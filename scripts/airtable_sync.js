@@ -727,6 +727,21 @@ async function main() {
   await syncCommitments();
   await syncYC();
 
+  // Sync executed SPAs from Airtable attachments into Supabase document store
+  try {
+    const RAILWAY_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : "https://founders-capital-platform-production.up.railway.app";
+    const spaRes = await fetch(`${RAILWAY_URL}/api/sync/spa-documents`, { method: "POST" });
+    const spaResult = await spaRes.json();
+    console.log(`  spa_sync:     ${spaResult.synced ?? 0} synced, ${spaResult.skipped ?? 0} skipped, ${(spaResult.errors ?? []).length} errors`);
+    if (spaResult.errors?.length) {
+      spaResult.errors.forEach(e => console.warn(`    SPA error: ${e}`));
+    }
+  } catch (spaErr) {
+    console.warn(`  spa_sync:     failed — ${spaErr.message}`);
+  }
+
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
   console.log("\n═══════════════════════════════════════════════════");

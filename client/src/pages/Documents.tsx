@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FolderOpen, Upload, Download, Eye, Trash2, Plus } from "lucide-react";
+import { FolderOpen, Upload, Download, Eye, Trash2, Plus, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -121,13 +121,39 @@ export default function Documents() {
             <p className="text-sm text-gray-500">Operating agreements, sub docs, call notices, K-1s — centralised and LP-accessible</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
-        >
-          <Plus className="w-4 h-4" />
-          Upload Document
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              apiRequest("POST", "/api/sync/spa-documents")
+                .then(r => r.json())
+                .then(result => {
+                  qc.invalidateQueries({ queryKey: ["/api/documents"] });
+                  toast({
+                    title: result.synced > 0
+                      ? `SPAs synced: ${result.synced} imported`
+                      : result.skipped > 0
+                        ? "SPAs up to date — nothing new to import"
+                        : "No SPA files found in Airtable yet",
+                    description: result.errors?.length
+                      ? `${result.errors.length} error(s): ${result.errors[0]}`
+                      : undefined,
+                  });
+                })
+                .catch(e => toast({ title: "Sync failed", description: e.message, variant: "destructive" }));
+            }}
+            className="flex items-center gap-2 border border-indigo-300 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-50"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Sync from Airtable
+          </button>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
+          >
+            <Plus className="w-4 h-4" />
+            Upload Document
+          </button>
+        </div>
       </div>
 
       {/* Stock Purchase Agreements — per-SPV quick panel */}

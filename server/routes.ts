@@ -1408,6 +1408,131 @@ Founders Capital`;
     res.json(data ?? { status: "no_sync_yet" });
   });
 
+  // POST /api/sync/spa-documents — pull executed SPAs from Airtable and store in Supabase
+  app.post("/api/sync/spa-documents", async (_req, res) => {
+    const AIRTABLE_PAT  = process.env.AIRTABLE_PAT!;
+    const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
+    const DEALS_TABLE   = "tbln6AszmitsErPgh";
+
+    // Vector SPV entity_id → Airtable deal record id (discovered via deal code suffix -DEL)
+    const VECTOR_DEAL_MAP: Record<string, { entityId: string; dealCode: string }> = {
+      "rec4VkF6Q3NCxsOUf": { entityId: "4b9c14d2-f183-40e4-9268-cde01b565455", dealCode: "RPW-0326-DEL"  }, // Vector III — Reach Power
+      "reccKzQNQriTfUvRT": { entityId: "c677bafd-be0b-4ddd-911f-a14746165f77", dealCode: "PMS-0426-DEL"  }, // Vector IV  — Project Prometheus
+      "recNXibyGVygKmzdG": { entityId: "9f05cfb3-8f46-4175-92b2-c31afac38550", dealCode: "ERB-0426-DEL"  }, // Vector II  — Erebor
+      "recQvnCEPwVwRwmzd": { entityId: "2184a8e9-30fd-4b45-b415-908571bbeae3", dealCode: "PSQ-0526-DEL"  }, // Vector V   — PsiQuantum
+      "recZF9TDsGenvFqwt": { entityId: "a1000000-0000-0000-0000-000000000006", dealCode: "CLY-0526-DEL"  }, // Vector I   — Clay
+    };
+
+    const results: any[] = [];
+    let synced = 0, skipped = 0;
+    const errors: string[] = [];
+
+    try {
+      // Ensure storage bucket exists
+      await supabase.storage.createBucket("documents", { public: false }).catch(() => {}); // ignore if exists
+
+      for (const [airtableRecordId, { entityId, dealCode }] of Object.entries(VECTOR_DEAL_MAP)) {
+        try {
+          // Fetch Airtable record
+          const atRes = await fetch(
+            `https://api.airtable.com/v0/${AIRTABLE_BASE}/${DEALS_TABLE}/${airtableRecordId}`,
+            { headers: { Authorization: `Bearer ${AIRTABLE_PAT}` } }
+          );
+          if (!atRes.ok) { errors.push(`${dealCode}: Airtable fetch failed (${atRes.status})`); continue; }
+          const record = await atRes.json() as any;
+          const fields = record.fields || {};
+
+          // Prefer "Unredacted Fully Executed Investment Agreement", fall back to "Investment agreement"
+          // In fallback case only accept if filename contains 'Stock Purchase' or 'SPA'
+          let attachments: any[] = fields["Unredacted Fully Executed Investment Agreement"] || [];
+          if (!attachments.length) {
+            const invAgree: any[] = fields["Investment agreement"] || [];
+            attachments = invAgree.filter((a: any) =>
+              /stock.?purchase|\bspa\b|series.?agree/i.test(a.filename || "")
+            );
+          }
+
+          if (!attachments.length) {
+            skipped++;
+            results.push({ dealCode, status: "no_spa_found" });
+            continue;
+          }
+
+          // Use first PDF attachment
+          const att = attachments.find((a: any) => a.type === "application/pdf") || attachments[0];
+          const filename = att.filename as string;
+
+          // Check if we already have this exact file stored (by name + entity)
+          const { data: existing } = await supabase
+            .from("documents")
+            .select("id, name, created_at")
+            .eq("entity_id", entityId)
+            .eq("document_type", "stock_purchase_agreement")
+            .maybeSingle();
+
+          if (existing && existing.name === filename) {
+            skipped++;
+            results.push({ dealCode, status: "already_current", filename });
+            continue;
+          }
+
+          // Download from Airtable (URL is a signed temporary URL — must download immediately)
+          const fileRes = await fetch(att.url);
+          if (!fileRes.ok) { errors.push(`${dealCode}: download failed (${fileRes.status})`); continue; }
+          const fileBuffer = Buffer.from(await fileRes.arrayBuffer());
+
+          // Upload to Supabase Storage
+          const storagePath = `${entityId}/spa-${Date.now()}-${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+          const { error: uploadErr } = await supabase.storage
+            .from("documents")
+            .upload(storagePath, fileBuffer, { contentType: "application/pdf", upsert: true });
+          if (uploadErr) { errors.push(`${dealCode}: storage upload failed — ${uploadErr.message}`); continue; }
+
+          // Remove old SPA record if replacing
+          if (existing) {
+            if (existing.name !== filename) {
+              // Delete old storage file (best-effort)
+              const { data: oldDoc } = await supabase.from("documents").select("storage_path").eq("id", existing.id).single();
+              if (oldDoc?.storage_path) await supabase.storage.from("documents").remove([oldDoc.storage_path]);
+              await supabase.from("documents").delete().eq("id", existing.id);
+            }
+          }
+
+          // Upsert documents row
+          const { error: insertErr } = await supabase.from("documents").insert({
+            entity_id: entityId,
+            document_type: "stock_purchase_agreement",
+            name: filename,
+            storage_path: storagePath,
+            file_size_bytes: fileBuffer.length,
+            is_lp_visible: false,
+            notes: `Auto-synced from Airtable deal ${dealCode} on ${new Date().toISOString().slice(0, 10)}`,
+          });
+          if (insertErr) { errors.push(`${dealCode}: DB insert failed — ${insertErr.message}`); continue; }
+
+          synced++;
+          results.push({ dealCode, status: "synced", filename, bytes: fileBuffer.length });
+        } catch (e: any) {
+          errors.push(`${dealCode}: unexpected error — ${e.message}`);
+        }
+      }
+
+      res.json({ status: "ok", synced, skipped, errors, results });
+    } catch (e: any) {
+      res.status(500).json({ status: "error", message: e.message });
+    }
+  });
+
+  // GET /api/sync/spa-documents/status — last sync summary
+  app.get("/api/sync/spa-documents/status", async (_req, res) => {
+    const { data } = await supabase
+      .from("documents")
+      .select("entity_id, name, created_at, notes, entities(short_code)")
+      .eq("document_type", "stock_purchase_agreement")
+      .order("created_at", { ascending: false });
+    res.json(data ?? []);
+  });
+
   // ── LP Capital Account Ledger ──────────────────────────────────────────────────
 
   // GET all entries — filterable by entity_id, investor_id, tax_year
