@@ -675,6 +675,15 @@ export default function Dashboard() {
     c.entities?.short_code?.startsWith("FC-VECTOR")
   );
 
+  // FC Group Holding Ltd investor ID — used for the Commitment Overview card
+  const FC_GROUP_INVESTOR_ID = "84674b32-2af9-4ecd-a5b7-2e7dc5d6384f";
+  const fcGroupCommitment = selectedEntity
+    ? filteredCommitments.find(
+        (c: any) => c.investor_id === FC_GROUP_INVESTOR_ID &&
+                    c.entities?.short_code === selectedEntity.short_code
+      )
+    : null;
+
   // Use authoritative Airtable-synced entity figures where available;
   // fall back to summing commitment rows for entities not yet synced.
   const totalCommitted = (() => {
@@ -899,7 +908,7 @@ export default function Dashboard() {
             {[
               { label: "Gross Allocated Amount",          value: selectedEntity.gross_allocated_amount },
               { label: "Funds Received",                  value: selectedEntity.funds_received },
-              { label: "Vehicle Subscription (Signed)",   value: selectedEntity.vehicle_subscription_amount },
+              { label: "FC Investment",   value: fcGroupCommitment?.committed_amount ?? null },
               { label: "Final Investment (Deal Currency)",value: selectedEntity.final_investment_usd },
               { label: "Access Fees Forecast",            value: selectedEntity.access_fees_forecast },
               { label: "Access Fees Generated",           value: selectedEntity.access_fees_generated },
