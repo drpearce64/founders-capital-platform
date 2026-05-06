@@ -310,9 +310,26 @@ async function syncDeals() {
         .maybeSingle();
 
       if (existingEntity) {
+        // Only update financial summary fields on existing entities —
+        // never overwrite name, short_code, entity_type or jurisdiction
+        // which may have been manually set (e.g. FC-VECTOR-* canonical rows).
+        const financial_update = {
+          vehicle_subscription_amount: entity_row.vehicle_subscription_amount,
+          gross_allocated_amount:      entity_row.gross_allocated_amount,
+          access_fees_generated:       entity_row.access_fees_generated,
+          access_fees_forecast:        entity_row.access_fees_forecast,
+          funds_received:              entity_row.funds_received,
+          final_investment_usd:        entity_row.final_investment_usd,
+          financial_summary_updated_at: entity_row.financial_summary_updated_at,
+          status:                      entity_row.status,
+          formation_date:              entity_row.formation_date,
+          carry_rate:                  entity_row.carry_rate,
+          management_fee_rate:         entity_row.management_fee_rate,
+          notes:                       entity_row.notes,
+        };
         const { error } = await supabase
           .from("entities")
-          .update(entity_row)
+          .update(financial_update)
           .eq("id", existingEntity.id);
         if (error) throw error;
         entity_id = existingEntity.id;
