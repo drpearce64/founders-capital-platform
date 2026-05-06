@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
 const DOC_TYPES = [
-  "operating_agreement", "side_letter", "subscription_doc",
+  "stock_purchase_agreement", "operating_agreement", "side_letter", "subscription_doc",
   "call_notice", "distribution_notice", "k1", "kyc", "other"
 ];
 
@@ -15,6 +15,7 @@ function typeLabel(t: string) {
 
 function typeBadge(t: string) {
   const map: Record<string, string> = {
+    stock_purchase_agreement: "bg-teal-100 text-teal-800",
     operating_agreement: "bg-blue-100 text-blue-800",
     side_letter: "bg-purple-100 text-purple-800",
     subscription_doc: "bg-indigo-100 text-indigo-800",
@@ -71,7 +72,9 @@ export default function Documents() {
     },
   });
 
-  const spvs = entities.filter((e: any) => e.entity_type === "series_spv");
+  const spvs = entities
+    .filter((e: any) => e.entity_type === "series_spv" && e.short_code?.startsWith("FC-VECTOR"))
+    .sort((a: any, b: any) => a.short_code.localeCompare(b.short_code));
 
   const uploadDoc = useMutation({
     mutationFn: async (body: any) => {
@@ -125,6 +128,69 @@ export default function Documents() {
           <Plus className="w-4 h-4" />
           Upload Document
         </button>
+      </div>
+
+      {/* Stock Purchase Agreements — per-SPV quick panel */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Executed Stock Purchase Agreements</h2>
+            <p className="text-xs text-gray-500 mt-0.5">One SPA per Series SPV — upload via the button above, selecting type "Stock Purchase Agreement"</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+          {spvs.map((spv: any) => {
+            const spa = documents.find((d: any) =>
+              d.document_type === "stock_purchase_agreement" && d.entity_id === spv.id
+            );
+            const label = spv.short_code?.replace("FC-", "") || spv.name;
+            return (
+              <div key={spv.id} className="px-5 py-4 flex flex-col gap-2">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</div>
+                {spa ? (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                      <span className="text-xs text-gray-700 font-medium truncate" title={spa.name}>{spa.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={`/api/documents/${spa.id}/download`}
+                        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                      >
+                        <Download className="w-3 h-3" /> Download
+                      </a>
+                      <button
+                        onClick={() => { if (confirm("Remove this SPA?")) deleteDoc.mutate(spa.id); }}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600"
+                      >
+                        <Trash2 className="w-3 h-3" /> Remove
+                      </button>
+                    </div>
+                    <div className="text-xs text-gray-400">{new Date(spa.created_at).toLocaleDateString()}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
+                      <span className="text-xs text-gray-400">Not uploaded</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setForm(f => ({ ...f, entity_id: spv.id, document_type: "stock_purchase_agreement", name: `${label} Stock Purchase Agreement` }));
+                        setShowForm(true);
+                        setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 50);
+                      }}
+                      className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      <Upload className="w-3 h-3" /> Upload SPA
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Filters */}
