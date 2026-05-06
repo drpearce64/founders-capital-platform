@@ -917,7 +917,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Row 2 ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <KPICard
           label={selectedSeries === "all" ? "Active SPVs" : "Series"}
           value={selectedSeries === "all" ? String(spvCount) : selectedEntity?.short_code.replace("FC-", "") ?? "—"}
@@ -931,13 +931,6 @@ export default function Dashboard() {
           sub={totalFV > totalCost ? `+${fmt(totalFV - totalCost)} unrealised gain` : "At cost"}
           icon={TrendingUp} color="#3B5BDB" loading={loading}
           onClick={() => openDrill("cost")}
-        />
-        <KPICard
-          label="Portfolio Companies"
-          value={String(activePositions)}
-          sub={activePositions > 0 ? `${activePositions} active position${activePositions !== 1 ? "s" : ""}` : "No positions yet"}
-          icon={CheckCircle2} color="#0CA678" loading={loading}
-          onClick={() => openDrill("companies")}
         />
         <KPICard
           label="Unrealised Gain"
