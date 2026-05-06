@@ -243,7 +243,7 @@ async function syncDeals() {
     "URL",
     "Quarter closed",
     "Platform",
-    "Total Committed Trim",
+    "Cap",
     "Finalised Allocation - US SPVs Rollup (from Commitments)",
     "USD Fees Generated",
     "Access Fees Forecast",
@@ -291,7 +291,7 @@ async function syncDeals() {
       management_fee_rate: safeNum(f["Total Fee"]) ?? 0.06,
       notes:             f["Company Description"] ? String(f["Company Description"]).slice(0, 1000) : null,
       // Financial summary fields — authoritative Airtable figures
-      vehicle_subscription_amount: safeNum(f["Total Committed Trim"]) ?? null,
+      vehicle_subscription_amount: safeNum(f["Cap"]) ?? null,
       gross_allocated_amount:      safeNum(f["Finalised Allocation - US SPVs Rollup (from Commitments)"]) ?? null,
       access_fees_generated:       safeNum(f["USD Fees Generated"]) ?? null,
       access_fees_forecast:        safeNum(f["Access Fees Forecast"]) ?? null,
