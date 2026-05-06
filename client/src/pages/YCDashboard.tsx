@@ -1036,7 +1036,7 @@ export default function YCDashboard() {
                     ))}
                     <th className="px-4 py-3 text-left font-medium">Follow-on</th>
                     <th className="px-4 py-3 text-left font-medium"></th>
-                    <th className="px-4 py-3 text-left font-medium">Link</th>
+
                   </tr>
                 </thead>
 
@@ -1056,8 +1056,23 @@ export default function YCDashboard() {
                     >
                       {/* Company */}
                       <td className="px-4 py-3">
-                        <div className="font-medium text-xs" style={{ color: "hsl(var(--foreground))" }}>
-                          {deal.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim()}
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-xs" style={{ color: "hsl(var(--foreground))" }}>
+                            {deal.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim()}
+                          </span>
+                          {deal.url && (
+                            <a
+                              href={deal.url.trim()}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="flex-shrink-0 hover:opacity-70 transition-opacity"
+                              style={{ color: "hsl(var(--primary))" }}
+                              title={deal.url.trim()}
+                            >
+                              <ExternalLink size={11} />
+                            </a>
+                          )}
                         </div>
                         {deal.description && (
                           <div
@@ -1164,21 +1179,7 @@ export default function YCDashboard() {
                         >Mark</button>
                       </td>
 
-                      {/* Link */}
-                      <td className="px-4 py-3">
-                        {deal.url ? (
-                          <a
-                            href={deal.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            data-testid={`link-deal-${deal.id}`}
-                            className="inline-flex items-center gap-1 text-xs hover:opacity-70 transition-opacity"
-                            style={{ color: "hsl(var(--primary))" }}
-                          >
-                            <ExternalLink size={12} />
-                          </a>
-                        ) : "—"}
-                      </td>
+
                     </tr>
                   ))}
 
