@@ -464,7 +464,7 @@ export default function CapitalCalls() {
     queryFn: () => apiRequest("GET", "/api/capital-calls").then(r => r.json()),
   });
 
-  const spvs = entities.filter((e: any) => e.entity_type === "series_spv");
+  const spvs = entities.filter((e: any) => e.entity_type === "series_spv" && e.short_code?.startsWith("FC-VECTOR"));
 
   const onEntityChange = (id: string) => {
     const spv = spvs.find((e: any) => e.id === id);

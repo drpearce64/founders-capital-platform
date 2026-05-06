@@ -42,7 +42,7 @@ export default function SeriesExpenses() {
     queryFn: () => apiRequest("GET", "/api/entities").then(r => r.json()),
   });
 
-  const spvs = entities.filter((e: any) => e.entity_type === "series_spv");
+  const spvs = entities.filter((e: any) => e.entity_type === "series_spv" && e.short_code?.startsWith("FC-VECTOR"));
 
   const { data: expenses = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/series-expenses"],

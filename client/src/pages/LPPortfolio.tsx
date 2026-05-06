@@ -34,8 +34,13 @@ export default function LPPortfolio() {
     queryFn: () => apiRequest("GET", "/api/commitments").then(r => r.json()),
   });
 
+  // Delaware view: only include commitments to FC-VECTOR Series SPVs
+  const vectorCommitments = commitments.filter((c: any) =>
+    c.entities?.short_code?.startsWith("FC-VECTOR")
+  );
+
   // Group by investor
-  const byInvestor = commitments.reduce((acc: Record<string, any>, c: any) => {
+  const byInvestor = vectorCommitments.reduce((acc: Record<string, any>, c: any) => {
     const id = c.investor_id;
     if (!acc[id]) {
       acc[id] = {

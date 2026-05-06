@@ -18,7 +18,7 @@ export default function Waterfall() {
     queryKey: ["/api/entities"],
     queryFn: () => apiRequest("GET", "/api/entities").then(r => r.json()),
   });
-  const spvs = entities.filter((e: any) => e.entity_type === "series_spv");
+  const spvs = entities.filter((e: any) => e.entity_type === "series_spv" && e.short_code?.startsWith("FC-VECTOR"));
 
   const mutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/waterfall", {

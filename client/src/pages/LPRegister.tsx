@@ -21,9 +21,11 @@ export default function LPRegister() {
     },
   });
 
-  const spvs = entities.filter((e: any) => e.entity_type === "series_spv");
+  const spvs = entities.filter((e: any) => e.entity_type === "series_spv" && e.short_code?.startsWith("FC-VECTOR"));
 
   const filtered = commitments.filter((c: any) => {
+    // Delaware view: only show commitments to FC-VECTOR Series SPVs
+    if (!c.entities?.short_code?.startsWith("FC-VECTOR")) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (

@@ -153,7 +153,7 @@ export default function NAVMarks() {
   });
 
   const spvs = (entities as any[]).filter((e: any) =>
-    !e.short_code?.startsWith("FC-CAYMAN") && e.entity_type === "series_spv"
+    e.short_code?.startsWith("FC-VECTOR") && e.entity_type === "series_spv"
   );
 
 
