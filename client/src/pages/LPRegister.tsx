@@ -34,8 +34,32 @@ export default function LPRegister() {
     );
   });
 
-  const totalCommitted = filtered.reduce((s: number, c: any) => s + Number(c.committed_amount), 0);
-  const totalCalled = filtered.reduce((s: number, c: any) => s + Number(c.called_amount), 0);
+  // Use authoritative entity-level figures where available
+  const selectedEntityData = entityFilter !== "all" ? spvs.find((e: any) => e.id === entityFilter) : null;
+  const allVectorEntities = spvs; // already filtered to FC-VECTOR
+
+  const totalCommitted = (() => {
+    if (selectedEntityData) {
+      const signed = parseFloat(selectedEntityData.vehicle_subscription_amount || 0);
+      if (signed > 0) return signed;
+    } else {
+      const entitySum = allVectorEntities.reduce((s: number, e: any) => s + parseFloat(e.vehicle_subscription_amount || 0), 0);
+      if (entitySum > 0) return entitySum;
+    }
+    return filtered.reduce((s: number, c: any) => s + Number(c.committed_amount), 0);
+  })();
+
+  const totalCalled = (() => {
+    if (selectedEntityData) {
+      const recv = parseFloat(selectedEntityData.funds_received || 0);
+      if (recv > 0) return recv;
+    } else {
+      const entitySum = allVectorEntities.reduce((s: number, e: any) => s + parseFloat(e.funds_received || 0), 0);
+      if (entitySum > 0) return entitySum;
+    }
+    return filtered.reduce((s: number, c: any) => s + Number(c.called_amount), 0);
+  })();
+
   const outstanding = totalCommitted - totalCalled;
 
   const statusColor = (s: string) => {
@@ -56,7 +80,7 @@ export default function LPRegister() {
       {/* Summary row */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label: "Total Committed", value: fmtUSD(totalCommitted) },
+          { label: selectedEntityData?.vehicle_subscription_amount ? "Vehicle Subscription (Signed)" : "Total Committed", value: fmtUSD(totalCommitted) },
           { label: "Funds Received", value: fmtUSD(totalCalled) },
           { label: "Outstanding", value: fmtUSD(outstanding) },
         ].map(s => (

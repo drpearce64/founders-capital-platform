@@ -672,15 +672,50 @@ export default function Dashboard() {
     c.entities?.short_code?.startsWith("FC-VECTOR")
   );
 
-  const totalCommitted  = filteredCommitments.reduce((s, c) => s + parseFloat(c.committed_amount || 0), 0);
-  const totalCalled     = filteredCommitments.reduce((s, c) => s + parseFloat(c.called_amount    || 0), 0);
+  // Use authoritative Airtable-synced entity figures where available;
+  // fall back to summing commitment rows for entities not yet synced.
+  const totalCommitted = (() => {
+    if (selectedEntity) {
+      // Single series selected — prefer vehicle_subscription_amount from entity
+      const signed = parseFloat(selectedEntity.vehicle_subscription_amount || 0);
+      if (signed > 0) return signed;
+    } else {
+      // All series — sum vehicle_subscription_amount across Vector entities
+      const entitySum = seriesSPVs.reduce((s, e) => s + parseFloat(e.vehicle_subscription_amount || 0), 0);
+      if (entitySum > 0) return entitySum;
+    }
+    // Fallback: sum commitment rows
+    return filteredCommitments.reduce((s, c) => s + parseFloat(c.committed_amount || 0), 0);
+  })();
+
+  const totalCalled = (() => {
+    if (selectedEntity) {
+      const recv = parseFloat(selectedEntity.funds_received || 0);
+      if (recv > 0) return recv;
+    } else {
+      const entitySum = seriesSPVs.reduce((s, e) => s + parseFloat(e.funds_received || 0), 0);
+      if (entitySum > 0) return entitySum;
+    }
+    return filteredCommitments.reduce((s, c) => s + parseFloat(c.called_amount || 0), 0);
+  })();
+
   const activeCommits   = filteredCommitments.filter(c => c.status === "active").length;
   const uncalled        = totalCommitted - totalCalled;
 
   const filteredInvestments = (investments as any[]).filter(i =>
     i.entities?.short_code?.startsWith("FC-VECTOR")
   );
-  const totalCost = filteredInvestments.reduce((s, i) => s + parseFloat(i.cost_basis || 0), 0);
+  // Cost Deployed: use authoritative final_investment_usd from entity where available
+  const totalCost = (() => {
+    if (selectedEntity) {
+      const dep = parseFloat(selectedEntity.final_investment_usd || 0);
+      if (dep > 0) return dep;
+    } else {
+      const entitySum = seriesSPVs.reduce((s, e) => s + parseFloat(e.final_investment_usd || 0), 0);
+      if (entitySum > 0) return entitySum;
+    }
+    return filteredInvestments.reduce((s, i) => s + parseFloat(i.cost_basis || 0), 0);
+  })();
   const totalFV   = filteredInvestments.reduce((s, i) => s + parseFloat(i.current_fair_value ?? i.cost_basis ?? 0), 0);
   const unrealised = totalFV - totalCost;
   const moic = totalCost > 0 ? totalFV / totalCost : 0;

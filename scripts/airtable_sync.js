@@ -243,6 +243,12 @@ async function syncDeals() {
     "URL",
     "Quarter closed",
     "Platform",
+    "Total Committed Trim",
+    "Finalised Allocation - US SPVs Rollup (from Commitments)",
+    "Access Fees Generated",
+    "Final Investment (Deal Currency)",
+    "USD INVESTMENT VALUE",
+    "FC Fee ",
   ]);
 
   console.log(`  Fetched ${records.length} deals from Airtable`);
@@ -283,6 +289,13 @@ async function syncDeals() {
       carry_rate:        safeNum(f["Carry"]) ?? 0.20,
       management_fee_rate: safeNum(f["Total Fee"]) ?? 0.06,
       notes:             f["Company Description"] ? String(f["Company Description"]).slice(0, 1000) : null,
+      // Financial summary fields — authoritative Airtable figures
+      vehicle_subscription_amount: safeNum(f["Total Committed Trim"]) ?? null,
+      gross_allocated_amount:      safeNum(f["Finalised Allocation - US SPVs Rollup (from Commitments)"]) ?? null,
+      access_fees_generated:       safeNum(f["FC Fee "]) ?? null,
+      funds_received:              safeNum(f["Total Received"]) ?? null,
+      final_investment_usd:        safeNum(f["USD INVESTMENT VALUE"]) ?? safeNum(f["Final Investment (Deal Currency)"]) ?? null,
+      financial_summary_updated_at: new Date().toISOString(),
     };
 
     let entity_id = null;
