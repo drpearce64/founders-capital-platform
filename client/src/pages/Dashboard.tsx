@@ -5,7 +5,7 @@ import { fmtUSD, fmtDate } from "@/lib/utils";
 import {
   TrendingUp, Users, Building2, DollarSign, AlertCircle,
   Network, ChevronRight, Phone, BarChart3, CheckCircle2,
-  Filter, X, ArrowUpRight,
+  Filter, X,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ValuationMarkModal } from "@/components/ValuationMarkModal";
@@ -92,9 +92,7 @@ function KPICard({
             <div className="p-2 rounded-lg" style={{ background: color + "22" }}>
               <Icon size={16} style={{ color }} />
             </div>
-            {onClick && (
-              <ArrowUpRight size={11} style={{ color: "hsl(var(--muted-foreground))", opacity: 0.5 }} />
-            )}
+
           </div>
         </div>
       </CardContent>
