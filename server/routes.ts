@@ -1408,6 +1408,26 @@ Founders Capital`;
     res.json(data ?? { status: "no_sync_yet" });
   });
 
+  // GET /api/debug/airtable-fields/:recordId — temporary debug: dump raw Airtable field keys + attachment filenames
+  app.get("/api/debug/airtable-fields/:recordId", async (req, res) => {
+    const PAT = process.env.AIRTABLE_PAT!;
+    const r = await fetch(`https://api.airtable.com/v0/appXSAE1n2PvdCQB1/tbln6AszmitsErPgh/${req.params.recordId}`, { headers: { Authorization: `Bearer ${PAT}` } });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    const data = await r.json() as any;
+    const fields = data.fields || {};
+    const summary: any = {};
+    for (const [k, v] of Object.entries(fields)) {
+      if (Array.isArray(v) && (v as any[]).length && (v as any[])[0]?.url) {
+        summary[k] = (v as any[]).map((a: any) => ({ filename: a.filename, type: a.type }));
+      } else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+        summary[k] = v;
+      } else {
+        summary[k] = `[${typeof v}]`;
+      }
+    }
+    res.json(summary);
+  });
+
   // POST /api/sync/spa-documents — pull executed SPAs from Airtable and store in Supabase
   app.post("/api/sync/spa-documents", async (_req, res) => {
     const AIRTABLE_PAT  = process.env.AIRTABLE_PAT!;
