@@ -867,7 +867,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Row 1: Fund-level KPIs ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         <KPICard
           label="Vehicle Subscription (Signed)"
           value={fmt(totalCommitted)}
@@ -881,13 +881,6 @@ export default function Dashboard() {
           sub={`${totalCommitted > 0 ? ((totalCalled / totalCommitted) * 100).toFixed(0) : 0}% of subscription`}
           icon={Phone} color="#0CA678" loading={loading}
           onClick={() => openDrill("called")}
-        />
-        <KPICard
-          label="Portfolio NAV"
-          value={fmt(totalFV)}
-          sub={totalCost > 0 ? `MOIC ${moic.toFixed(2)}x · ${unrealised >= 0 ? "+" : ""}${fmt(unrealised)} unrealised` : "Awaiting first mark"}
-          icon={BarChart3} color="#7048E8" loading={loading}
-          onClick={() => openDrill("nav")}
         />
         <KPICard
           label="Uncalled / Outstanding"
