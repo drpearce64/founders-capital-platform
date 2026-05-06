@@ -80,9 +80,9 @@ export default function LPRegister() {
       {/* Summary row */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label: selectedEntityData?.vehicle_subscription_amount ? "Vehicle Subscription (Signed)" : "Total Committed", value: fmtUSD(totalCommitted) },
-          { label: "Funds Received", value: fmtUSD(totalCalled) },
-          { label: "Outstanding", value: fmtUSD(outstanding) },
+          { label: "Vehicle Subscription (Signed)", value: fmtUSD(totalCommitted) },
+          { label: "Funds Received",                 value: fmtUSD(totalCalled) },
+          { label: "Uncalled / Outstanding",         value: fmtUSD(outstanding) },
         ].map(s => (
           <div key={s.label} className="rounded-xl border px-5 py-4"
             style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
@@ -130,7 +130,7 @@ export default function LPRegister() {
           <table className="w-full text-sm min-w-[700px]">
             <thead>
               <tr style={{ background: "hsl(var(--muted))", borderBottom: "1px solid hsl(var(--border))" }}>
-                {["Name", "Email", "SPV", "Committed", "Called", "Outstanding", "Status"].map(h => (
+                {["Name", "Email", "SPV", "Subscription", "Funds Received", "Outstanding", "Status"].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider"
                     style={{ color: "hsl(var(--muted-foreground))" }}>{h}</th>
                 ))}

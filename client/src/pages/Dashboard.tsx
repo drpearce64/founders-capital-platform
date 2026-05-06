@@ -35,12 +35,12 @@ type DrillKey =
   | "structure";
 
 const DRILL_META: Record<DrillKey, { title: string; subtitle: string }> = {
-  commitments: { title: "Total Commitments", subtitle: "All LP commitments across Vector Series" },
-  called:      { title: "Called to Date",    subtitle: "Capital drawn from LPs" },
+  commitments: { title: "Vehicle Subscription Amount (Signed)", subtitle: "Signed LP subscription amount per executed SPA" },
+  called:      { title: "Funds Received",                       subtitle: "Capital received from LPs" },
   nav:         { title: "Portfolio NAV",     subtitle: "Fair value of all positions" },
-  uncalled:    { title: "Uncalled Capital",  subtitle: "Remaining undrawn commitments" },
+  uncalled:    { title: "Uncalled / Outstanding", subtitle: "Subscribed but not yet received" },
   spvs:        { title: "Active SPVs",       subtitle: "Vector Series Protected Cells" },
-  cost:        { title: "Cost Deployed",     subtitle: "Capital invested at cost" },
+  cost:        { title: "Final Investment",  subtitle: "Amount deployed to portfolio company (deal currency)" },
   companies:   { title: "Portfolio Companies", subtitle: "Active investment positions" },
   unrealised:  { title: "Unrealised Gain / Loss", subtitle: "Fair value vs cost basis" },
   structure:   { title: "Delaware Entity Structure", subtitle: "Founders Capital Platform LLC · Series LLC" },
@@ -862,16 +862,16 @@ export default function Dashboard() {
       {/* ── Row 1: Fund-level KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <KPICard
-          label="Total Commitments"
+          label="Vehicle Subscription (Signed)"
           value={fmt(totalCommitted)}
           sub={`${lpCount} LP${lpCount !== 1 ? "s" : ""} · ${activeCommits} active`}
           icon={Users} color="#3B5BDB" loading={loading}
           onClick={() => openDrill("commitments")}
         />
         <KPICard
-          label="Called to Date"
+          label="Funds Received"
           value={fmt(totalCalled)}
-          sub={`${totalCommitted > 0 ? ((totalCalled / totalCommitted) * 100).toFixed(0) : 0}% of committed`}
+          sub={`${totalCommitted > 0 ? ((totalCalled / totalCommitted) * 100).toFixed(0) : 0}% of subscription`}
           icon={Phone} color="#0CA678" loading={loading}
           onClick={() => openDrill("called")}
         />
@@ -883,7 +883,7 @@ export default function Dashboard() {
           onClick={() => openDrill("nav")}
         />
         <KPICard
-          label="Uncalled Capital"
+          label="Uncalled / Outstanding"
           value={fmt(uncalled)}
           sub={`${totalCommitted > 0 ? ((uncalled / totalCommitted) * 100).toFixed(0) : 0}% of fund size remaining`}
           icon={DollarSign} color="#F59F00" loading={loading}
@@ -901,7 +901,7 @@ export default function Dashboard() {
           onClick={() => openDrill("spvs")}
         />
         <KPICard
-          label="Cost Deployed"
+          label="Final Investment"
           value={fmt(totalCost)}
           sub={totalFV > totalCost ? `+${fmt(totalFV - totalCost)} unrealised gain` : "At cost"}
           icon={TrendingUp} color="#3B5BDB" loading={loading}
