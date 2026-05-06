@@ -577,7 +577,7 @@ const DELAWARE_STRUCTURE = {
             { label: "Vector II", sub: "FC-VECTOR-II · Protected Series", color: "hsl(142 70% 45%)", children: [] },
             { label: "Vector III · Reach Power",       sub: "FC-VECTOR-III · EIN 36-5168991", color: "hsl(142 70% 45%)", children: [] },
             { label: "Vector IV · Project Prometheus",  sub: "FC-VECTOR-IV · EIN 61-2311112",  color: "hsl(142 70% 45%)", children: [] },
-            { label: "Vector V",  sub: "FC-VECTOR-V · Protected Series",  color: "hsl(142 70% 45%)", children: [] },
+            { label: "Vector V · Erebor",  sub: "FC-VECTOR-V · Protected Series",  color: "hsl(142 70% 45%)", children: [] },
           ],
         },
       ],
