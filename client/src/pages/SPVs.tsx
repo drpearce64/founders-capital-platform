@@ -43,6 +43,7 @@ export default function SPVs() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "", short_code: "", jurisdiction: "Delaware, USA",
+    airtable_deal_id: "",
     bank_name: "HSBC Bank USA NA", bank_account_name: "", bank_account_no: "",
     bank_swift: "", hsbc_account_ref: "", status: "active",
   });
@@ -68,7 +69,7 @@ export default function SPVs() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       toast({ title: "SPV created", description: `${form.name} has been added.` });
       setShowForm(false);
-      setForm({ name: "", short_code: "", jurisdiction: "Delaware, USA", bank_name: "HSBC Bank USA NA", bank_account_name: "", bank_account_no: "", bank_swift: "", hsbc_account_ref: "", status: "active" });
+      setForm({ name: "", short_code: "", jurisdiction: "Delaware, USA", airtable_deal_id: "", bank_name: "HSBC Bank USA NA", bank_account_name: "", bank_account_no: "", bank_swift: "", hsbc_account_ref: "", status: "active" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -117,6 +118,14 @@ export default function SPVs() {
                 onChange={(e: any) => setForm(f => ({ ...f, short_code: e.target.value }))} />
               <Field label="Jurisdiction" name="jurisdiction" value={form.jurisdiction}
                 onChange={(e: any) => setForm(f => ({ ...f, jurisdiction: e.target.value }))} />
+              <div className="col-span-2">
+                <Field label="Airtable Deal ID" name="airtable_deal_id" value={form.airtable_deal_id} required
+                  placeholder="recXXXXXXXXXXXXXX"
+                  onChange={(e: any) => setForm(f => ({ ...f, airtable_deal_id: e.target.value }))} />
+                <p className="text-xs mt-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+                  Found in the Airtable Deals table URL when the record is open. Required for nightly sync to populate financial fields automatically.
+                </p>
+              </div>
               <div className="col-span-2 border-t pt-4 mt-1" style={{ borderColor: "hsl(var(--border))" }}>
                 <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: "hsl(var(--muted-foreground))" }}>Bank Details</p>
               </div>
