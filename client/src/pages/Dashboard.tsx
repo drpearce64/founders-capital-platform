@@ -924,20 +924,13 @@ export default function Dashboard() {
       )}
 
       {/* ── Row 2 ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-6">
         <KPICard
           label={selectedSeries === "all" ? "Active SPVs" : "Series"}
           value={selectedSeries === "all" ? String(spvCount) : selectedEntity?.short_code.replace("FC-", "") ?? "—"}
           sub={selectedSeries === "all" ? "Protected Series · Delaware LP" : selectedEntity?.name}
           icon={Building2} color="#0CA678" loading={loading}
           onClick={() => openDrill("spvs")}
-        />
-        <KPICard
-          label="Final Investment"
-          value={fmt(totalCost)}
-          sub={totalFV > totalCost ? `+${fmt(totalFV - totalCost)} unrealised gain` : "At cost"}
-          icon={TrendingUp} color="#3B5BDB" loading={loading}
-          onClick={() => openDrill("cost")}
         />
         <KPICard
           label="Unrealised Gain"
