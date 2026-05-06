@@ -1438,8 +1438,8 @@ Founders Capital`;
     const VECTOR_DEAL_MAP: Record<string, { entityId: string; dealCode: string }> = {
       "rec4VkF6Q3NCxsOUf": { entityId: "4b9c14d2-f183-40e4-9268-cde01b565455", dealCode: "RPW-0326-DEL"  }, // Vector III — Reach Power
       "reccKzQNQriTfUvRT": { entityId: "c677bafd-be0b-4ddd-911f-a14746165f77", dealCode: "PMS-0426-DEL"  }, // Vector IV  — Project Prometheus
-      "recNXibyGVygKmzdG": { entityId: "9f05cfb3-8f46-4175-92b2-c31afac38550", dealCode: "ERB-0426-DEL"  }, // Vector II  — Erebor
-      "recQvnCEPwVwRwmzd": { entityId: "2184a8e9-30fd-4b45-b415-908571bbeae3", dealCode: "PSQ-0526-DEL"  }, // Vector V   — PsiQuantum
+      "recQvnCEPwVwRwmzd": { entityId: "9f05cfb3-8f46-4175-92b2-c31afac38550", dealCode: "PSQ-0526-DEL"  }, // Vector II  — PsiQuantum
+      "recNXibyGVygKmzdG": { entityId: "2184a8e9-30fd-4b45-b415-908571bbeae3", dealCode: "ERB-0426-DEL"  }, // Vector V   — Erebor
       "recZF9TDsGenvFqwt": { entityId: "a1000000-0000-0000-0000-000000000006", dealCode: "CLY-0526-DEL"  }, // Vector I   — Clay
     };
 
