@@ -1506,7 +1506,6 @@ Founders Capital`;
             storage_path: storagePath,
             file_size_bytes: fileBuffer.length,
             is_lp_visible: false,
-            notes: `Auto-synced from Airtable deal ${dealCode} on ${new Date().toISOString().slice(0, 10)}`,
           });
           if (insertErr) { errors.push(`${dealCode}: DB insert failed — ${insertErr.message}`); continue; }
 
@@ -1527,7 +1526,7 @@ Founders Capital`;
   app.get("/api/sync/spa-documents/status", async (_req, res) => {
     const { data } = await supabase
       .from("documents")
-      .select("entity_id, name, created_at, notes, entities(short_code)")
+      .select("entity_id, name, created_at, entities(short_code)")
       .eq("document_type", "stock_purchase_agreement")
       .order("created_at", { ascending: false });
     res.json(data ?? []);
