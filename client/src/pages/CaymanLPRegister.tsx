@@ -30,7 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
   active:       "#0CA678",
   pending:      "#F59F00",
   called:       "#3B5BDB",
-  fully_drawn:  "#7048E8",
+  fully_drawn:  "#0CA678",
   exited:       "#868E96",
   transferred:  "#868E96",
 };
@@ -73,7 +73,7 @@ export default function CaymanLPRegister() {
   const totalCommitment = (lps as any[]).reduce((s, lp) => s + (parseFloat(lp.committed_amount) || 0), 0);
   const totalCalled     = (lps as any[]).reduce((s, lp) => s + (parseFloat(lp.called_amount)    || 0), 0);
   const totalUncalled   = totalCommitment - totalCalled;
-  const activeLPs       = (lps as any[]).filter((l: any) => l.status === "active").length;
+  const activeLPs       = (lps as any[]).filter((l: any) => l.status === "active" || l.status === "fully_drawn").length;
   const kycPending      = (lps as any[]).filter((l: any) => l.status === "pending").length;
 
   return (
@@ -231,7 +231,7 @@ export default function CaymanLPRegister() {
                             color:       STATUS_COLORS[lp.status] ?? "#868E96",
                           }}
                         >
-                          {lp.status}
+                          {lp.status === "fully_drawn" ? "active" : lp.status}
                         </Badge>
                       </TableCell>
                     </TableRow>

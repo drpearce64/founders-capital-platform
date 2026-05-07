@@ -185,8 +185,8 @@ function DrillContent({
                   </td>
                   <td className={TD + " text-center"}>
                     <Badge variant="outline" className="text-xs capitalize"
-                      style={{ borderColor: c.status === "active" ? "#0CA678" : "#F59F00", color: c.status === "active" ? "#0CA678" : "#F59F00" }}>
-                      {c.status}
+                      style={{ borderColor: c.status === "active" || c.status === "fully_drawn" ? "#0CA678" : "#F59F00", color: c.status === "active" || c.status === "fully_drawn" ? "#0CA678" : "#F59F00" }}>
+                      {c.status === "fully_drawn" ? "Active" : c.status}
                     </Badge>
                   </td>
                 </tr>
@@ -709,7 +709,7 @@ export default function Dashboard() {
     return filteredCommitments.reduce((s, c) => s + parseFloat(c.called_amount || 0), 0);
   })();
 
-  const activeCommits   = filteredCommitments.filter(c => c.status === "active").length;
+  const activeCommits   = filteredCommitments.filter(c => c.status === "active" || c.status === "fully_drawn").length;
   // Uncalled always derived from LP rows — avoids negative result when funds_received > vehicle_subscription_amount
   const uncalled = filteredCommitments.reduce((s, c) => {
     const u = parseFloat(c.committed_amount || 0) - parseFloat(c.called_amount || 0);
@@ -1070,8 +1070,8 @@ export default function Dashboard() {
                             {c.investors?.full_name ?? c.investor_id}
                           </p>
                           <Badge variant="outline" className="text-xs flex-shrink-0 capitalize"
-                            style={{ borderColor: c.status === "active" ? "#0CA678" : "#F59F00", color: c.status === "active" ? "#0CA678" : "#F59F00" }}>
-                            {c.status}
+                            style={{ borderColor: c.status === "active" || c.status === "fully_drawn" ? "#0CA678" : "#F59F00", color: c.status === "active" || c.status === "fully_drawn" ? "#0CA678" : "#F59F00" }}>
+                            {c.status === "fully_drawn" ? "Active" : c.status}
                           </Badge>
                         </div>
                         <p className="text-sm font-mono font-medium flex-shrink-0 ml-3" style={{ color: "hsl(var(--foreground))" }}>

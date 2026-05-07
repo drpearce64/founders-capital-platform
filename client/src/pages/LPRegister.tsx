@@ -62,9 +62,11 @@ export default function LPRegister() {
 
   const outstanding = totalCommitted - totalCalled;
 
+  const normaliseStatus = (s: string) => (s === "fully_drawn" ? "active" : s);
   const statusColor = (s: string) => {
-    if (s === "active") return { bg: "hsl(142 71% 42% / 0.15)", color: "hsl(142 71% 55%)" };
-    if (s === "called") return { bg: "hsl(38 92% 52% / 0.15)", color: "hsl(38 92% 60%)" };
+    const n = normaliseStatus(s);
+    if (n === "active") return { bg: "hsl(142 71% 42% / 0.15)", color: "hsl(142 71% 55%)" };
+    if (n === "called") return { bg: "hsl(38 92% 52% / 0.15)", color: "hsl(38 92% 60%)" };
     return { bg: "hsl(var(--secondary))", color: "hsl(var(--muted-foreground))" };
   };
 
@@ -194,7 +196,7 @@ export default function LPRegister() {
                     <td className="px-4 py-3">
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                         style={{ background: sc.bg, color: sc.color }}>
-                        {c.status}
+                        {normaliseStatus(c.status)}
                       </span>
                     </td>
                   </tr>
