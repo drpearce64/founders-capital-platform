@@ -874,7 +874,8 @@ export default function Dashboard() {
       </div>
 
       {/* ── Row 1: Fund-level KPIs ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+      {/* Hidden when a single series is selected — Commitment Overview covers this */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4" style={{ display: selectedEntity ? "none" : undefined }}>
         <KPICard
           label="Vehicle Subscription (Signed)"
           value={fmt(totalCommitted)}
