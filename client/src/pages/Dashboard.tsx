@@ -961,13 +961,41 @@ export default function Dashboard() {
 
       {/* ── Row 2 ── */}
       <div className="grid grid-cols-2 gap-4 mb-6">
-        <KPICard
-          label={selectedSeries === "all" ? "Active SPVs" : "Series"}
-          value={selectedSeries === "all" ? String(spvCount) : selectedEntity?.short_code.replace("FC-", "") ?? "—"}
-          sub={selectedSeries === "all" ? "Protected Series · Delaware LP" : selectedEntity?.name}
-          icon={Building2} color="#0CA678" loading={loading}
-          onClick={() => openDrill("spvs")}
-        />
+        {selectedEntity ? (() => {
+          const inv        = selectedEntity.investments?.[0];
+          const coName     = inv?.company_name ?? "—";
+          const coWebsite  = inv?.company_website ?? null;
+          const fcAmt      = fcGroupCommitment?.committed_amount ?? null;
+          return (
+            <div className="rounded-xl border px-5 py-4 flex flex-col justify-between"
+              style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+              <div className="text-xs uppercase tracking-wider mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Portfolio Investment</div>
+              <div className="text-xl font-semibold mb-1" style={{ color: "hsl(var(--foreground))" }}>{coName}</div>
+              {fcAmt != null && (
+                <div className="text-sm font-mono mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>
+                  FC Investment: <span style={{ color: "hsl(var(--foreground))" }}>{fmt(parseFloat(fcAmt))}</span>
+                </div>
+              )}
+              {coWebsite && (
+                <a href={coWebsite.startsWith("http") ? coWebsite : `https://${coWebsite}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="text-xs inline-flex items-center gap-1 mt-auto"
+                  style={{ color: "#3B5BDB" }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  {coWebsite.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                </a>
+              )}
+            </div>
+          );
+        })() : (
+          <KPICard
+            label="Active SPVs"
+            value={String(spvCount)}
+            sub="Protected Series · Delaware LP"
+            icon={Building2} color="#0CA678" loading={loading}
+            onClick={() => openDrill("spvs")}
+          />
+        )}
         <KPICard
           label="Unrealised Gain"
           value={`${unrealised >= 0 ? "+" : ""}${fmt(unrealised)}`}

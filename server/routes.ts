@@ -538,7 +538,7 @@ Founders Capital`;
     const vectorIds = (vectorEntitiesRes.data || []).map((e: any) => e.id);
 
     const [entitiesRes, commitmentsRes, investmentsRes, callsRes] = await Promise.all([
-      supabase.from("entities").select("*, investments(company_name, status)")
+      supabase.from("entities").select("*, investments(company_name, company_website, status)")
         .like("short_code", "FC-VECTOR-%").is("archived_at", null),
       supabase.from("investor_commitments").select("committed_amount, called_amount, status, entity_id")
         .in("entity_id", vectorIds).is("archived_at", null),
