@@ -1074,22 +1074,22 @@ export default function Dashboard() {
         {/* LP Commitments */}
         <Card className="border" style={{ borderColor: "hsl(var(--border))" }}>
           <CardHeader className="pb-2 pt-4 px-5">
-            <CardTitle className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
-              <span className="flex items-center gap-2 flex-wrap">
-                <span>LP Commitments</span>
-                {seriesLabel && <span className="text-xs font-normal" style={{ color: "hsl(var(--muted-foreground))" }}>· {seriesLabel}</span>}
-                {filteredCommitments.length > 0 && (() => {
-                  const total = filteredCommitments.length;
-                  const hasFc = filteredCommitments.some((c: any) => c.investor_id === FC_GROUP_INVESTOR_ID);
-                  return (
-                    <span className="text-xs font-normal px-2 py-0.5 rounded-full ml-auto"
-                      style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
-                      {total} LP{total !== 1 ? "s" : ""}{hasFc ? " (inc. FC)" : ""}
-                    </span>
-                  );
-                })()}
-              </span>
-            </CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+                LP Commitments
+                {seriesLabel && <span className="ml-2 text-xs font-normal" style={{ color: "hsl(var(--muted-foreground))" }}>· {seriesLabel}</span>}
+              </CardTitle>
+              {filteredCommitments.length > 0 && (() => {
+                const total = filteredCommitments.length;
+                const hasFc = filteredCommitments.some((c: any) => c.investor_id === FC_GROUP_INVESTOR_ID);
+                return (
+                  <span className="text-xs font-normal px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+                    {total} LP{total !== 1 ? "s" : ""}{hasFc ? " (inc. FC)" : ""}
+                  </span>
+                );
+              })()}
+            </div>
           </CardHeader>
           <CardContent className="px-5 pb-4">
             {loadingCommitments ? (
