@@ -231,7 +231,7 @@ async function main() {
   console.log(`[PLGen] Fetched: ${entities.length} entities, ${investments.length} investments, ${commitments.length} commitments, ${capAcctBalances.length} capital account rows`);
 
   // ── BUILD VECTOR DATA ──────────────────────────────────────────────────────
-  const seriesEntities = entities.filter(e => e.entity_type === "series_spv");
+  const seriesEntities = entities.filter(e => e.entity_type === "series_spv" && e.short_code?.startsWith("FC-VECTOR-"));
 
   const vectors = seriesEntities.map(e => {
     const inv      = investments.find(i => i.entity_id === e.id);
