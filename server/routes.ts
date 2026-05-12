@@ -1828,6 +1828,52 @@ Founders Capital`;
     }
   });
 
+  // ── Cayman P&L Model download ────────────────────────────────────────────────
+  app.get("/api/reports/cayman-pl-model", async (_req, res) => {
+    const generatorProd = path.join(process.cwd(), "dist", "scripts", "generate_cayman_pl_model.cjs");
+    const generatorDev  = path.join(process.cwd(), "scripts", "generate_cayman_pl_model.cjs");
+    const generatorPath = fs.existsSync(generatorProd) ? generatorProd : generatorDev;
+
+    if (!fs.existsSync(generatorPath)) {
+      return res.status(500).json({ error: "Cayman P&L generator script not found on server." });
+    }
+
+    const tmpFile = path.join(os.tmpdir(), `fc_cayman_pl_model_${Date.now()}.xlsx`);
+
+    try {
+      await execFileAsync(process.execPath, [generatorPath, tmpFile], {
+        timeout: 30_000,
+        env: process.env,
+      });
+
+      if (!fs.existsSync(tmpFile)) {
+        return res.status(500).json({ error: "Generator ran but produced no output file." });
+      }
+
+      const stat = fs.statSync(tmpFile);
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="FC_Cayman_PL_Model_${new Date().toISOString().slice(0,10)}.xlsx"`
+      );
+      res.setHeader("Content-Length", stat.size);
+
+      const stream = fs.createReadStream(tmpFile);
+      stream.on("end", () => { fs.unlink(tmpFile, () => {}); });
+      stream.pipe(res);
+    } catch (err: any) {
+      fs.unlink(tmpFile, () => {});
+      console.error("[CaymanPLModel] Generator error:", err.message);
+      return res.status(500).json({
+        error: "Failed to generate Cayman P&L model.",
+        detail: err.message,
+      });
+    }
+  });
+
   // ── Accounts Payable — Invoices ──────────────────────────────────────────────
 
   // GET /api/invoices — list all invoices with optional filters

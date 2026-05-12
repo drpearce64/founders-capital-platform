@@ -154,16 +154,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
   // ── Background sync on app load ───────────────────────────────────────────
-  // Temporarily disabled until Railway deploys the fixed sync script
-  // (which no longer overwrites name/short_code on existing entities).
-  // Re-enable once Railway is on commit 94c9d80.
-  // useEffect(() => {
-  //   apiRequest("POST", "/api/sync/airtable").catch(() => {/* silent */});
-  //   const timer = setTimeout(() => {
-  //     queryClient.invalidateQueries();
-  //   }, 15000);
-  //   return () => clearTimeout(timer);
-  // }, []);
+  useEffect(() => {
+    apiRequest("POST", "/api/sync/airtable").catch(() => {/* silent */});
+    const timer = setTimeout(() => {
+      queryClient.invalidateQueries();
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, []);
   // ─────────────────────────────────────────────────────────────────────────
 
   const jurisdiction = detectJurisdiction(location);
