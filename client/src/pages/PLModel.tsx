@@ -65,15 +65,25 @@ export default function PLModel() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // Fetch a lightweight snapshot from Supabase-backed route
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+
   const { data: snapshot, isLoading } = useQuery<PLSnapshot>({
-    queryKey: ["/api/reports/pl-snapshot"],
+    queryKey: ["/api/pl-snapshot"],
     queryFn: async () => {
+      setSnapshotError(null);
       // Build snapshot from existing entity/investment/commitment endpoints
       const [entitiesRes, investmentsRes, commitmentsRes] = await Promise.all([
         apiRequest("GET", "/api/entities"),
         apiRequest("GET", "/api/investments"),
         apiRequest("GET", "/api/investor-commitments"),
       ]);
+
+      if (!entitiesRes.ok || !investmentsRes.ok || !commitmentsRes.ok) {
+        const status = !entitiesRes.ok ? entitiesRes.status : !investmentsRes.ok ? investmentsRes.status : commitmentsRes.status;
+        const msg = `Server returned HTTP ${status} — the backend may be temporarily unavailable. Please try again in a moment.`;
+        setSnapshotError(msg);
+        throw new Error(msg);
+      }
 
       const entities: any[] = await entitiesRes.json();
       const investments: any[] = await investmentsRes.json();
@@ -124,9 +134,7 @@ export default function PLModel() {
     setDownloading(true);
     setDownloadError(null);
     try {
-      const res = await fetch(
-        window.location.origin.replace(/:\d+$/, ":5000") + "/api/reports/pl-model"
-      );
+      const res = await apiRequest("GET", "/api/reports/pl-model");
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -165,7 +173,7 @@ export default function PLModel() {
             className="text-sm mt-0.5"
             style={{ color: "hsl(var(--muted-foreground))" }}
           >
-            Series &amp; Consolidated Profit &amp; Loss · Excel workbook
+            Series &amp; Consolidated Profit &amp; Loss · Excel workbook · Delaware Series SPVs only
             {snapshot && (
               <span className="ml-2 opacity-60">
                 · As of {snapshot.as_of_date}
@@ -193,7 +201,7 @@ export default function PLModel() {
         </Button>
       </div>
 
-      {downloadError && (
+      {(downloadError || snapshotError) && (
         <div
           className="rounded-md px-4 py-3 text-sm"
           style={{
@@ -202,7 +210,7 @@ export default function PLModel() {
             border: "1px solid hsl(0 70% 80%)",
           }}
         >
-          {downloadError}
+          {downloadError || snapshotError}
         </div>
       )}
 
