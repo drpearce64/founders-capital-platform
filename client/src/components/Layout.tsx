@@ -44,19 +44,24 @@ const delawareSections: Record<string, string> = {
 
 // ── Cayman nav ────────────────────────────────────────────────────────────────
 const caymanNav = [
-  { href: "/cayman",                  label: "Dashboard",         icon: LayoutDashboard, section: "overview" },
-  { href: "/cayman/fund-overview",    label: "Fund Overview",     icon: Landmark,        section: "overview" },
-  { href: "/cayman/lp-register",      label: "LP Register",       icon: Users,           section: "investors" },
-  { href: "/cayman/capital-calls",    label: "Capital Calls",     icon: Phone,           section: "investors" },
-  { href: "/cayman/nav",              label: "NAV / Fair Value",  icon: BarChart3,       section: "finance" },
-  { href: "/cayman/accounts-payable", label: "Accounts Payable",  icon: FileCheck,       section: "finance" },
-  { href: "/cayman/transactions",      label: "Transactions",       icon: Receipt,         section: "finance" },
-  { href: "/group-structure",         label: "Group Structure",   icon: Network,         section: "group" },
-  { href: "/investor-register",        label: "Investor Register", icon: BookUser,        section: "group" },
-  { href: "/statements",              label: "Statements",        icon: FileText,        section: "reporting" },
-  { href: "/reporting-calendar",      label: "Reporting Calendar",icon: CalendarDays,    section: "reporting" },
-  { href: "/documents",               label: "Documents",         icon: FolderOpen,      section: "admin" },
-  { href: "/audit-log",               label: "Audit Log",         icon: Shield,          section: "admin" },
+  { href: "/cayman",                  label: "Dashboard",              icon: LayoutDashboard, section: "overview" },
+  { href: "/cayman/fund-overview",    label: "Fund Overview",          icon: Landmark,        section: "overview" },
+  { href: "/cayman/lp-onboarding",    label: "Onboard LP",             icon: UserPlus,        section: "investors" },
+  { href: "/cayman/lp-register",      label: "LP Register",            icon: Users,           section: "investors" },
+  { href: "/cayman/lp-portfolio",     label: "LP Portfolio",           icon: Layers,          section: "investors" },
+  { href: "/cayman/capital-calls",    label: "Capital Calls",          icon: Phone,           section: "investors" },
+  { href: "/cayman/nav",              label: "NAV / Fair Value",       icon: BarChart3,       section: "finance" },
+  { href: "/cayman/series-expenses",  label: "Series Expenses",        icon: Receipt,         section: "finance" },
+  { href: "/cayman/waterfall",        label: "Waterfall",              icon: TrendingUp,      section: "finance" },
+  { href: "/cayman/tax-accounts",     label: "Tax & Capital Accounts", icon: BookOpen,        section: "finance" },
+  { href: "/cayman/accounts-payable", label: "Accounts Payable",       icon: FileCheck,       section: "finance" },
+  { href: "/cayman/transactions",     label: "Transactions",           icon: Receipt,         section: "finance" },
+  { href: "/group-structure",         label: "Group Structure",        icon: Network,         section: "group" },
+  { href: "/investor-register",       label: "Investor Register",      icon: BookUser,        section: "group" },
+  { href: "/statements",              label: "Statements",             icon: FileText,        section: "reporting" },
+  { href: "/cayman/airtable-sync",    label: "Airtable Sync",          icon: RefreshCw,       section: "reporting" },
+  { href: "/pl-model",                label: "P&L Model",              icon: FileSpreadsheet, section: "reporting" },
+  { href: "/reporting-calendar",      label: "Reporting Calendar",     icon: CalendarDays,    section: "reporting" },
 ];
 
 const caymanSections: Record<string, string> = {
@@ -65,7 +70,6 @@ const caymanSections: Record<string, string> = {
   finance:   "Finance",
   group:     "Group",
   reporting: "Reporting",
-  admin:     "Administration",
 };
 
 // ── YC nav ────────────────────────────────────────────────────────────────────
