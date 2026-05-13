@@ -8,7 +8,6 @@ import {
   ChevronRight,
   BarChart2,
   DollarSign,
-  Layers,
   TrendingUp,
   Globe,
   Building2,
@@ -25,20 +24,12 @@ const USD = (n: number | null | undefined) => {
   }).format(n);
 };
 
-// Vector SPV entity IDs — these are the Cayman fund's investments
-const VECTOR_ENTITY_IDS = [
-  "a1000000-0000-0000-0000-000000000006", // Vector I  — Clay
-  "9f05cfb3-8f46-4175-92b2-c31afac38550", // Vector II — PsiQuantum
-  "4b9c14d2-f183-40e4-9268-cde01b565455", // Vector III — Reach Power
-  "c677bafd-be0b-4ddd-911f-a14746165f77", // Vector IV — Project Prometheus
-  "2184a8e9-30fd-4b45-b415-908571bbeae3", // Vector V  — Erebor
-];
 
 const CAYMAN_SHEETS = [
   { label: "Cover",         desc: "Overview and navigation" },
   { label: "Assumptions",   desc: "Mgmt fee, carry, hurdle rate, FX rates" },
   { label: "Fund Summary",  desc: "NAV, IRR, TVPI, DPI — fund-level KPIs" },
-  { label: "Portfolio",     desc: "Vector SPV investments — cost basis, fair value, MOIC" },
+  { label: "Portfolio",     desc: "YC portfolio investments — cost basis, fair value, MOIC" },
   { label: "Waterfall",     desc: "LP distribution model — return of capital, hurdle, carry" },
   { label: "Cap Accounts",  desc: "LP & GP capital account movements" },
   { label: "GP Economics",  desc: "Management fees, carry entitlement, catch-up" },
@@ -52,35 +43,34 @@ const CAYMAN_STATIC = {
   fund_size_note:    "FC Group Holding Ltd 99% LP / GP 1%",
 };
 
-interface VectorInvestment {
-  entity_id: string;
-  company_name: string;
-  cost_basis: number;
-  current_fair_value: number | null;
-  investment_date: string | null;
+interface YCDeal {
+  id: string;
+  name: string;
+  usd_investment_value: number | null;
+  live_market_value_usd: number | null;
+  health_status: string | null;
+  has_followon: boolean;
 }
 
 export default function CaymanPLModel() {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  // Live query: Vector SPV investments (the Cayman fund's actual portfolio)
-  const { data: investments, isLoading: invLoading } = useQuery<VectorInvestment[]>({
-    queryKey: ["/api/investments", "cayman-vectors"],
+  // Live query: YC deals = Cayman fund's direct portfolio
+  const { data: deals, isLoading: invLoading } = useQuery<YCDeal[]>({
+    queryKey: ["/api/yc-deals"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/investments");
+      const res = await apiRequest("GET", "/api/yc-deals");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const all: any[] = await res.json();
-      return all.filter((i) => VECTOR_ENTITY_IDS.includes(i.entity_id));
+      return res.json();
     },
     staleTime: 60_000,
   });
 
-  const activeSPVs    = investments?.filter((i) => i.cost_basis > 0) ?? [];
-  const totalCost     = activeSPVs.reduce((s, i) => s + (i.cost_basis ?? 0), 0);
-  const totalFV       = activeSPVs.reduce((s, i) => s + (i.current_fair_value ?? i.cost_basis ?? 0), 0);
-  const spvCount      = VECTOR_ENTITY_IDS.length; // total SPVs in structure
-  const fundedCount   = activeSPVs.length;         // SPVs with capital deployed
+  const totalCost     = (deals ?? []).reduce((s, d) => s + (d.usd_investment_value ?? 0), 0);
+  const totalFV       = (deals ?? []).reduce((s, d) => s + (d.live_market_value_usd ?? 0), 0);
+  const dealCount     = deals?.length ?? 0;
+  const followOnCount = (deals ?? []).filter((d) => d.has_followon).length;
 
   async function handleDownload() {
     setDownloading(true);
@@ -161,7 +151,7 @@ export default function CaymanPLModel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { icon: DollarSign, label: "Portfolio Cost Basis",     value: invLoading ? "…" : USD(totalCost) },
-          { icon: Building2,  label: "SPVs Funded",              value: invLoading ? "…" : `${fundedCount} of ${spvCount}` },
+          { icon: Building2,  label: "Investments",              value: invLoading ? "…" : String(dealCount) },
           { icon: TrendingUp, label: "Running Costs p.a.",       value: USD(CAYMAN_STATIC.running_costs_pa) },
           { icon: Globe,      label: "Formation Costs (actual)", value: USD(CAYMAN_STATIC.invoices_total) },
         ].map(({ icon: Icon, label, value }) => (
@@ -199,7 +189,9 @@ export default function CaymanPLModel() {
               ["Mgmt Fee",          "2% of NAV p.a."],
               ["Carry",             "20% over 8% p.a. hurdle (compounded)"],
               ["Portfolio Cost",    invLoading ? "…" : USD(totalCost)],
-              ["SPVs Funded",       invLoading ? "…" : `${fundedCount} of ${spvCount}`],
+              ["Live Market Value", invLoading ? "…" : USD(totalFV)],
+              ["Investments",       invLoading ? "…" : String(dealCount)],
+              ["With Follow-on",    invLoading ? "…" : String(followOnCount)],
               ["Formation Invoices","RW Blears £17,600 + Walkers $11,927.40"],
             ].map(([lbl, val]) => (
               <div key={lbl} className="flex flex-col gap-0.5">
