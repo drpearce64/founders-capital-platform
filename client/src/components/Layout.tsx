@@ -60,7 +60,7 @@ const caymanNav = [
   { href: "/investor-register",       label: "Investor Register",      icon: BookUser,        section: "group" },
   { href: "/statements",              label: "Statements",             icon: FileText,        section: "reporting" },
   { href: "/cayman/airtable-sync",    label: "Airtable Sync",          icon: RefreshCw,       section: "reporting" },
-  { href: "/pl-model",                label: "P&L Model",              icon: FileSpreadsheet, section: "reporting" },
+  { href: "/cayman/pl-model",         label: "P&L Model",              icon: FileSpreadsheet, section: "reporting" },
   { href: "/reporting-calendar",      label: "Reporting Calendar",     icon: CalendarDays,    section: "reporting" },
 ];
 
