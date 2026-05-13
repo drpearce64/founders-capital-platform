@@ -56,12 +56,12 @@ const caymanNav = [
   { href: "/cayman/tax-accounts",     label: "Tax & Capital Accounts", icon: BookOpen,        section: "finance" },
   { href: "/cayman/accounts-payable", label: "Accounts Payable",       icon: FileCheck,       section: "finance" },
   { href: "/cayman/transactions",     label: "Transactions",           icon: Receipt,         section: "finance" },
-  { href: "/group-structure",         label: "Group Structure",        icon: Network,         section: "group" },
-  { href: "/investor-register",       label: "Investor Register",      icon: BookUser,        section: "group" },
-  { href: "/statements",              label: "Statements",             icon: FileText,        section: "reporting" },
-  { href: "/cayman/airtable-sync",    label: "Airtable Sync",          icon: RefreshCw,       section: "reporting" },
-  { href: "/cayman/pl-model",         label: "P&L Model",              icon: FileSpreadsheet, section: "reporting" },
-  { href: "/reporting-calendar",      label: "Reporting Calendar",     icon: CalendarDays,    section: "reporting" },
+  { href: "/group-structure",              label: "Group Structure",        icon: Network,         section: "group" },
+  { href: "/cayman/investor-register",     label: "Investor Register",      icon: BookUser,        section: "group" },
+  { href: "/cayman/statements",            label: "Statements",             icon: FileText,        section: "reporting" },
+  { href: "/cayman/airtable-sync",         label: "Airtable Sync",          icon: RefreshCw,       section: "reporting" },
+  { href: "/cayman/pl-model",              label: "P&L Model",              icon: FileSpreadsheet, section: "reporting" },
+  { href: "/cayman/reporting-calendar",    label: "Reporting Calendar",     icon: CalendarDays,    section: "reporting" },
 ];
 
 const caymanSections: Record<string, string> = {

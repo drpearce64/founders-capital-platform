@@ -40,6 +40,7 @@ import CaymanNAV from "./pages/CaymanNAV";
 import CaymanAccountsPayable from "./pages/CaymanAccountsPayable";
 import CaymanTransactions from "./pages/CaymanTransactions";
 import CaymanPLModel from "./pages/CaymanPLModel";
+import CaymanPlaceholder from "./pages/CaymanPlaceholder";
 
 import NotFound from "./pages/not-found";
 
@@ -83,7 +84,16 @@ export default function App() {
             <Route path="/cayman/nav"                component={CaymanNAV} />
             <Route path="/cayman/accounts-payable"   component={CaymanAccountsPayable} />
             <Route path="/cayman/transactions"         component={CaymanTransactions} />
-            <Route path="/cayman/pl-model"            component={CaymanPLModel} />
+            <Route path="/cayman/pl-model"             component={CaymanPLModel} />
+            <Route path="/cayman/lp-onboarding"        component={() => <CaymanPlaceholder title="Onboard LP" />} />
+            <Route path="/cayman/lp-portfolio"         component={() => <CaymanPlaceholder title="LP Portfolio" />} />
+            <Route path="/cayman/series-expenses"      component={() => <CaymanPlaceholder title="Series Expenses" />} />
+            <Route path="/cayman/waterfall"            component={() => <CaymanPlaceholder title="Waterfall" />} />
+            <Route path="/cayman/tax-accounts"         component={() => <CaymanPlaceholder title="Tax & Capital Accounts" />} />
+            <Route path="/cayman/investor-register"    component={() => <CaymanPlaceholder title="Investor Register" />} />
+            <Route path="/cayman/statements"           component={() => <CaymanPlaceholder title="Statements" description="Cayman fund quarterly statements will appear here once the portfolio data is connected." />} />
+            <Route path="/cayman/airtable-sync"        component={() => <CaymanPlaceholder title="Airtable Sync" description="Cayman Airtable sync status will appear here once the fund tables are built." />} />
+            <Route path="/cayman/reporting-calendar"   component={() => <CaymanPlaceholder title="Reporting Calendar" />} />
 
             <Route component={NotFound} />
           </Switch>
