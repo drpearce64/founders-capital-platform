@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Download,
@@ -10,7 +9,6 @@ import {
   DollarSign,
   TrendingUp,
   Globe,
-  Building2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,34 +41,9 @@ const CAYMAN_STATIC = {
   fund_size_note:    "FC Group Holding Ltd 99% LP / GP 1%",
 };
 
-interface YCDeal {
-  id: string;
-  name: string;
-  usd_investment_value: number | null;
-  live_market_value_usd: number | null;
-  health_status: string | null;
-  has_followon: boolean;
-}
-
 export default function CaymanPLModel() {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-
-  // Live query: YC deals = Cayman fund's direct portfolio
-  const { data: deals, isLoading: invLoading } = useQuery<YCDeal[]>({
-    queryKey: ["/api/yc-deals"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/yc-deals");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
-
-  const totalCost     = (deals ?? []).reduce((s, d) => s + (d.usd_investment_value ?? 0), 0);
-  const totalFV       = (deals ?? []).reduce((s, d) => s + (d.live_market_value_usd ?? 0), 0);
-  const dealCount     = deals?.length ?? 0;
-  const followOnCount = (deals ?? []).filter((d) => d.has_followon).length;
 
   async function handleDownload() {
     setDownloading(true);
@@ -150,10 +123,10 @@ export default function CaymanPLModel() {
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { icon: DollarSign, label: "Portfolio Cost Basis",     value: invLoading ? "…" : USD(totalCost) },
-          { icon: Building2,  label: "Investments",              value: invLoading ? "…" : String(dealCount) },
-          { icon: TrendingUp, label: "Running Costs p.a.",       value: USD(CAYMAN_STATIC.running_costs_pa) },
-          { icon: Globe,      label: "Formation Costs (actual)", value: USD(CAYMAN_STATIC.invoices_total) },
+          { icon: DollarSign, label: "Portfolio Cost Basis",     value: "Pending" },
+          { icon: TrendingUp, label: "Live Market Value",         value: "Pending" },
+          { icon: TrendingUp, label: "Running Costs p.a.",        value: USD(CAYMAN_STATIC.running_costs_pa) },
+          { icon: Globe,      label: "Formation Costs (actual)",  value: USD(CAYMAN_STATIC.invoices_total) },
         ].map(({ icon: Icon, label, value }) => (
           <Card key={label} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
             <CardContent className="pt-4 pb-4">
@@ -188,10 +161,8 @@ export default function CaymanPLModel() {
               ["Inception",         CAYMAN_STATIC.inception_date],
               ["Mgmt Fee",          "2% of NAV p.a."],
               ["Carry",             "20% over 8% p.a. hurdle (compounded)"],
-              ["Portfolio Cost",    invLoading ? "…" : USD(totalCost)],
-              ["Live Market Value", invLoading ? "…" : USD(totalFV)],
-              ["Investments",       invLoading ? "…" : String(dealCount)],
-              ["With Follow-on",    invLoading ? "…" : String(followOnCount)],
+              ["Portfolio Cost",    "Pending — Airtable tables in build"],
+              ["Investments",       "Pending — Airtable tables in build"],
               ["Formation Invoices","RW Blears £17,600 + Walkers $11,927.40"],
             ].map(([lbl, val]) => (
               <div key={lbl} className="flex flex-col gap-0.5">
