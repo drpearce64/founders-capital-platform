@@ -2292,6 +2292,54 @@ Founders Capital`;
     }
   });
 
+  // ── Cayman Transactions ─────────────────────────────────────────────────────
+  // GET /api/cayman/transactions — bank_transactions for Cayman Fund + GP entities
+  app.get("/api/cayman/transactions", async (req, res) => {
+    try {
+      const CAYMAN_ENTITY_IDS = [
+        "14d76562-2219-4121-b0bd-5379018ac3b4", // Fund LP
+        "3540df09-f8bb-43ca-a4de-b89945b6b16b", // GP
+      ];
+      const limit  = Math.min(parseInt(String(req.query.limit  ?? "200"), 10), 500);
+      const offset = parseInt(String(req.query.offset ?? "0"),   10);
+      const entity = req.query.entity as string | undefined; // optional filter: 'fund' | 'gp'
+
+      const entityIds = entity === "fund"
+        ? [CAYMAN_ENTITY_IDS[0]]
+        : entity === "gp"
+        ? [CAYMAN_ENTITY_IDS[1]]
+        : CAYMAN_ENTITY_IDS;
+
+      const { data, error, count } = await supabase
+        .from("bank_transactions")
+        .select("*", { count: "exact" })
+        .in("entity_id", entityIds)
+        .order("transaction_date", { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      const rows = data ?? [];
+
+      // Summary stats
+      const totalCredits = rows.reduce((s: number, r: any) => s + (Number(r.credit_amount) || 0), 0);
+      const totalDebits  = rows.reduce((s: number, r: any) => s + (Number(r.debit_amount)  || 0), 0);
+
+      res.json({
+        transactions: rows,
+        summary: {
+          count: count ?? rows.length,
+          total_credits_usd: totalCredits,
+          total_debits_usd:  totalDebits,
+          net_usd:           totalCredits - totalDebits,
+        },
+        pagination: { limit, offset, total: count ?? rows.length },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // ── Reporting Calendar ─────────────────────────────────────────────────────────
   // GET /api/reporting-calendar/completions — all completions (optionally filtered by period)
   app.get("/api/reporting-calendar/completions", async (req, res) => {

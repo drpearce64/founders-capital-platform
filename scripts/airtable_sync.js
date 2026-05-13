@@ -23,10 +23,21 @@ const AIRTABLE_PAT      = process.env.AIRTABLE_PAT;
 const AIRTABLE_BASE_ID  = process.env.AIRTABLE_BASE_ID || "appXSAE1n2PvdCQB1";
 
 const AIRTABLE_TABLES = {
-  members:     "tblQb339jVtJ6cwCM",
-  commitments: "tblRI3sgfam7JSLuk",
-  deals:       "tbln6AszmitsErPgh",
+  members:      "tblQb339jVtJ6cwCM",
+  commitments:  "tblRI3sgfam7JSLuk",
+  deals:        "tbln6AszmitsErPgh",
+  transactions: "tblY3GpWW9Gb1orKb",
 };
+
+// Cayman entity IDs — used to route transactions to the correct entity
+const CAYMAN_FUND_ENTITY_ID = "14d76562-2219-4121-b0bd-5379018ac3b4";
+const CAYMAN_GP_ENTITY_ID   = "3540df09-f8bb-43ca-a4de-b89945b6b16b";
+
+// Sub Account → entity_id mapping for Cayman
+const CAYMAN_SUB_ACCOUNTS = new Set([
+  "Cayman Fund — FC Strat. Opps. Fund I LP",
+  "Cayman GP — FC Strat. Opps. Fund I GP Ltd",
+]);
 
 const AIRTABLE_API = "https://api.airtable.com/v0";
 
@@ -135,13 +146,14 @@ function mapInstrumentType(val) {
 // ── Counters ─────────────────────────────────────────────────────────────────
 
 const stats = {
-  investors:    { upserted: 0, skipped: 0, errors: 0 },
-  spvs:         { upserted: 0, skipped: 0, errors: 0 },
-  investments:  { upserted: 0, skipped: 0, errors: 0 },
-  commitments:  { upserted: 0, skipped: 0, errors: 0 },
-  yc_deals:     { upserted: 0, skipped: 0, errors: 0 },
-  yc_investors: { upserted: 0, skipped: 0, errors: 0 },
-  yc_holdings:  { upserted: 0, skipped: 0, errors: 0 },
+  investors:     { upserted: 0, skipped: 0, errors: 0 },
+  spvs:          { upserted: 0, skipped: 0, errors: 0 },
+  investments:   { upserted: 0, skipped: 0, errors: 0 },
+  commitments:   { upserted: 0, skipped: 0, errors: 0 },
+  yc_deals:      { upserted: 0, skipped: 0, errors: 0 },
+  yc_investors:  { upserted: 0, skipped: 0, errors: 0 },
+  yc_holdings:   { upserted: 0, skipped: 0, errors: 0 },
+  transactions:  { upserted: 0, skipped: 0, errors: 0 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -746,6 +758,163 @@ async function syncYC() {
 // MAIN
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ───────────────────────────────────────────────────────────────────────────────
+// STEP 6 — Sync Transactions → bank_transactions
+// Syncs ALL transactions from the Airtable Transactions table.
+// Routes to entity_id based on the Sub Account field:
+//   - Cayman sub-accounts → Cayman fund/GP entity IDs
+//   - Delaware Vectors    → entity_id looked up from entities by short_code match
+//   - Unknown             → skipped
+// Uses import_batch_id = airtable record ID for idempotent upserts (delete+insert).
+// ───────────────────────────────────────────────────────────────────────────────
+async function syncTransactions() {
+  console.log("\n[6/6] Syncing Transactions \u2192 bank_transactions…");
+
+  // Build sub_account → entity_id map from existing entities
+  const { data: entities } = await supabase
+    .from("entities")
+    .select("id, short_code, name");
+
+  const subAccountEntityMap = {};
+
+  // Cayman direct mappings
+  subAccountEntityMap["Cayman Fund \u2014 FC Strat. Opps. Fund I LP"] = CAYMAN_FUND_ENTITY_ID;
+  subAccountEntityMap["Cayman GP \u2014 FC Strat. Opps. Fund I GP Ltd"]  = CAYMAN_GP_ENTITY_ID;
+
+  // Delaware Vector mappings by sub_account label → short_code pattern
+  const vectorSubAccountMap = {
+    "Vector I":                          "FC-VECTOR-I",
+    "Vector II":                         "FC-VECTOR-II",
+    "FC PLATFORM LP VECTOR III SERIES":  "FC-VECTOR-III",
+    "FC PLATFORM LP VECTOR IV SERIES":   "FC-VECTOR-IV",
+    "FC PLATFORM LP VECTOR V SERIES":    "FC-VECTOR-V",
+    "Vector VI":                         "FC-VECTOR-VI",
+    "Vector VII":                        "FC-VECTOR-VII",
+    "Vector VIII":                       "FC-VECTOR-VIII",
+    "Vector IX":                         "FC-VECTOR-IX",
+    "Vector X":                          "FC-VECTOR-X",
+  };
+  for (const [subAcct, shortCode] of Object.entries(vectorSubAccountMap)) {
+    const entity = (entities || []).find(e => e.short_code === shortCode);
+    if (entity) subAccountEntityMap[subAcct] = entity.id;
+  }
+
+  // Fetch all Transactions from Airtable
+  const records = await fetchAirtableTable(AIRTABLE_TABLES.transactions, [
+    "id",
+    "type",
+    "title",
+    "description",
+    "amount",
+    "inflowOrOutflow",
+    "currency",
+    "status",
+    "createdOn",
+    "Origin",
+    "Sub Account",
+    "Banking Reference",
+    "Customer Reference",
+    "Label",
+    "Ignore",
+    "name",
+  ]);
+
+  console.log(`  Fetched ${records.length} transactions from Airtable`);
+
+  let rows = [];
+
+  for (const rec of records) {
+    const f = rec.fields;
+    const airtable_id = rec.id;
+
+    // Skip records marked Ignore
+    if (f["Ignore"] === true) { stats.transactions.skipped++; continue; }
+
+    const subAccount = f["Sub Account"] || "";
+    const entity_id  = subAccountEntityMap[subAccount];
+
+    if (!entity_id) {
+      // Unknown sub account — skip silently
+      stats.transactions.skipped++;
+      continue;
+    }
+
+    const rawAmount  = typeof f["amount"] === "number" ? f["amount"] : parseFloat(f["amount"]) || 0;
+    const direction  = String(f["inflowOrOutflow"] || "").toLowerCase();
+    const debitAmt   = direction === "outflow" ? Math.abs(rawAmount) : null;
+    const creditAmt  = direction === "inflow"  ? Math.abs(rawAmount) : null;
+    const currency   = f["currency"] ? String(f["currency"]).toUpperCase().trim() : "USD";
+    const txDate     = f["createdOn"]
+      ? new Date(f["createdOn"]).toISOString().split("T")[0]
+      : new Date().toISOString().split("T")[0];
+    const description = String(f["description"] || f["title"] || f["name"] || airtable_id);
+    const origin      = String(f["Origin"] || "Airtable");
+    const bankRef     = f["Banking Reference"]  ? String(f["Banking Reference"])  : null;
+    const custRef     = f["Customer Reference"] ? String(f["Customer Reference"]) : null;
+    const label       = f["Label"] ? String(f["Label"]) : null;
+
+    // bank_account_ref encodes origin + sub account for traceability
+    const bank_account_ref = `${origin} — ${subAccount}`;
+
+    rows.push({
+      entity_id,
+      bank_account_ref,
+      transaction_date: txDate,
+      description,
+      reference:        bankRef || custRef || null,
+      debit_amount:     debitAmt,
+      credit_amount:    creditAmt,
+      currency,
+      reconciled:       false,
+      import_batch_id:  null,
+      raw_data: {
+        airtable_id,
+        sub_account: subAccount,
+        origin,
+        label,
+        type:   f["type"]   || null,
+        status: f["status"] || null,
+        amount: rawAmount,
+        direction,
+      },
+    });
+  }
+
+  if (rows.length === 0) {
+    console.log("  No eligible transactions to sync.");
+    return;
+  }
+
+  // Upsert via delete-by-raw_data->airtable_id + insert
+  // Since there's no unique airtable_id column, we delete all existing rows
+  // whose raw_data->>'airtable_id' matches, then re-insert.
+  const CHUNK = 100;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const ids   = chunk.map(r => r.raw_data.airtable_id);
+
+    // Delete existing rows for these airtable IDs
+    await supabase
+      .from("bank_transactions")
+      .delete()
+      .in("raw_data->>airtable_id", ids);
+
+    // Insert fresh rows
+    const { error } = await supabase
+      .from("bank_transactions")
+      .insert(chunk);
+
+    if (error) {
+      console.error(`  \u2717 transactions chunk ${i}: ${error.message}`);
+      stats.transactions.errors += chunk.length;
+    } else {
+      stats.transactions.upserted += chunk.length;
+    }
+  }
+
+  console.log(`  \u2713 transactions — upserted: ${stats.transactions.upserted}, skipped: ${stats.transactions.skipped}, errors: ${stats.transactions.errors}`);
+}
+
 async function main() {
   console.log("═══════════════════════════════════════════════════");
   console.log("  Founders Capital — Airtable → Supabase Sync");
@@ -778,6 +947,9 @@ async function main() {
     console.warn(`  spa_sync:     failed — ${spaErr.message}`);
   }
 
+  // ── Phase 6: Transactions → bank_transactions ──────────────────────────────
+  await syncTransactions();
+
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
   console.log("\n═══════════════════════════════════════════════════");
@@ -789,6 +961,7 @@ async function main() {
   console.log(`  yc_deals:     ${stats.yc_deals.upserted} upserted, ${stats.yc_deals.errors} errors`);
   console.log(`  yc_investors: ${stats.yc_investors.upserted} upserted, ${stats.yc_investors.errors} errors`);
   console.log(`  yc_holdings:  ${stats.yc_holdings.upserted} upserted, ${stats.yc_holdings.errors} errors`);
+  console.log(`  transactions: ${stats.transactions.upserted} upserted, ${stats.transactions.skipped} skipped, ${stats.transactions.errors} errors`);
   console.log("═══════════════════════════════════════════════════\n");
 
   // Write a final summary row to the sync log
@@ -806,6 +979,7 @@ async function main() {
       yc_deals:         stats.yc_deals,
       yc_investors:     stats.yc_investors,
       yc_holdings:      stats.yc_holdings,
+      transactions:     stats.transactions,
     }),
   });
 }

@@ -38,6 +38,7 @@ import CaymanLPRegister from "./pages/CaymanLPRegister";
 import CaymanCapitalCalls from "./pages/CaymanCapitalCalls";
 import CaymanNAV from "./pages/CaymanNAV";
 import CaymanAccountsPayable from "./pages/CaymanAccountsPayable";
+import CaymanTransactions from "./pages/CaymanTransactions";
 
 import NotFound from "./pages/not-found";
 
@@ -80,6 +81,7 @@ export default function App() {
             <Route path="/cayman/capital-calls"      component={CaymanCapitalCalls} />
             <Route path="/cayman/nav"                component={CaymanNAV} />
             <Route path="/cayman/accounts-payable"   component={CaymanAccountsPayable} />
+            <Route path="/cayman/transactions"         component={CaymanTransactions} />
 
             <Route component={NotFound} />
           </Switch>

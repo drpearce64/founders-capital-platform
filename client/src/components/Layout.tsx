@@ -50,6 +50,7 @@ const caymanNav = [
   { href: "/cayman/capital-calls",    label: "Capital Calls",     icon: Phone,           section: "investors" },
   { href: "/cayman/nav",              label: "NAV / Fair Value",  icon: BarChart3,       section: "finance" },
   { href: "/cayman/accounts-payable", label: "Accounts Payable",  icon: FileCheck,       section: "finance" },
+  { href: "/cayman/transactions",      label: "Transactions",       icon: Receipt,         section: "finance" },
   { href: "/group-structure",         label: "Group Structure",   icon: Network,         section: "group" },
   { href: "/investor-register",        label: "Investor Register", icon: BookUser,        section: "group" },
   { href: "/statements",              label: "Statements",        icon: FileText,        section: "reporting" },
