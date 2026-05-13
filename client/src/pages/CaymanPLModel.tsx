@@ -125,7 +125,7 @@ export default function CaymanPLModel() {
         {[
           { icon: DollarSign, label: "Portfolio Cost Basis",     value: "Pending" },
           { icon: TrendingUp, label: "Live Market Value",         value: "Pending" },
-          { icon: TrendingUp, label: "Running Costs p.a.",        value: USD(CAYMAN_STATIC.running_costs_pa) },
+          { icon: TrendingUp, label: "Running Costs p.a.",        value: "Pending" },
           { icon: Globe,      label: "Formation Costs (actual)",  value: USD(CAYMAN_STATIC.invoices_total) },
         ].map(({ icon: Icon, label, value }) => (
           <Card key={label} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
