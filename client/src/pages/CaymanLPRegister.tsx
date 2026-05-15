@@ -58,8 +58,9 @@ export default function CaymanLPRegister() {
       subscription_date: data.subscription_date,
       status: data.status,
       notes: data.notes,
-      fee_rate: 0.02, carry_rate: 0.20, carried_interest_pct: 20.0,
-      management_fee_pct: 2.0, preferred_return_pct: 8.0,
+      // Paxiot flat fee £2,400/month (NOT % of NAV). No preferred return (LPA Cl.11.1).
+      fee_rate: null, carry_rate: 0.20, carried_interest_pct: 20.0,
+      management_fee_pct: null, preferred_return_pct: null,
     }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commitments", CAYMAN_FUND_ID] });

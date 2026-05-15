@@ -25,12 +25,12 @@ const USD = (n: number | null | undefined) => {
 
 const CAYMAN_SHEETS = [
   { label: "Cover",         desc: "Overview and navigation" },
-  { label: "Assumptions",   desc: "Mgmt fee, carry, hurdle rate, FX rates" },
+  { label: "Assumptions",   desc: "Paxiot flat fee (£2,400/month), carry, FX rates — per executed legal docs" },
   { label: "Fund Summary",  desc: "NAV, IRR, TVPI, DPI — fund-level KPIs" },
   { label: "Portfolio",     desc: "YC portfolio investments — cost basis, fair value, MOIC" },
-  { label: "Waterfall",     desc: "LP distribution model — return of capital, hurdle, carry" },
+  { label: "Waterfall",     desc: "LP distribution model — return of capital → 80% LP / 20% FC Group Holding carry (no hurdle)" },
   { label: "Cap Accounts",  desc: "LP & GP capital account movements" },
-  { label: "GP Economics",  desc: "Management fees, carry entitlement, catch-up" },
+  { label: "GP Economics",  desc: "Paxiot flat fee, FC Group Holding carry entitlement (no hurdle, no catch-up)" },
   { label: "Invoices",      desc: "Formation & running cost register (actuals)" },
 ];
 
@@ -159,8 +159,8 @@ export default function CaymanPLModel() {
               ["Structure",         "Closed-ended LP · Cayman Islands"],
               ["LP",                CAYMAN_STATIC.fund_size_note],
               ["Inception",         CAYMAN_STATIC.inception_date],
-              ["Mgmt Fee",          "2% of NAV p.a."],
-              ["Carry",             "20% over 8% p.a. hurdle (compounded)"],
+              ["Mgmt Fee",          "£2,400/month flat (Paxiot · Investment Period) — NOT % of NAV"],
+              ["Carry",             "20% · FC Group Holding Ltd · No hurdle / catch-up / HWM (LPA Cl.11.1)"],
               ["Portfolio Cost",    "Pending — Airtable tables in build"],
               ["Investments",       "Pending — Airtable tables in build"],
               ["Formation Invoices","RW Blears £17,600 + Walkers $11,927.40 + Paxiot £10,200"],
