@@ -36,7 +36,7 @@ const CAYMAN_SHEETS = [
 
 const CAYMAN_STATIC = {
   running_costs_pa:  39_768,
-  invoices_total:    34_279.40,
+  invoices_total:    47_993.30, // RW Blears £17,600 ($22,352) + Walkers $11,927.40 + Paxiot £10,200 ($13,713.90)
   inception_date:    "9 Oct 2025",
   fund_size_note:    "FC Group Holding Ltd 99% LP / GP 1%",
 };
@@ -163,7 +163,7 @@ export default function CaymanPLModel() {
               ["Carry",             "20% over 8% p.a. hurdle (compounded)"],
               ["Portfolio Cost",    "Pending — Airtable tables in build"],
               ["Investments",       "Pending — Airtable tables in build"],
-              ["Formation Invoices","RW Blears £17,600 + Walkers $11,927.40"],
+              ["Formation Invoices","RW Blears £17,600 + Walkers $11,927.40 + Paxiot £10,200"],
             ].map(([lbl, val]) => (
               <div key={lbl} className="flex flex-col gap-0.5">
                 <span style={{ color: "hsl(var(--muted-foreground))" }}>{lbl}</span>

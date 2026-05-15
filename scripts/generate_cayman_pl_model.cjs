@@ -292,6 +292,17 @@ const INVOICES = [
       { desc: "Disbursements — Sundry Expense",  qty: 1, unit:   347.40, srcCcy: "USD", usd:   347.40 },
     ],
   },
+  {
+    ref: "F30-2.3", date: "13 Apr 2026", supplier: "Paxiot Limited",
+    entity: "FC Strat. Opps. Fund I GP Ltd", category: "Fund Administration",
+    srcCcy: "GBP", srcAmount: 10200.00, fxRate: 1.3445,
+    usdAmount: Math.round(10200.00 * 1.3445 * 100) / 100,
+    status: "Due / Payable",
+    notes: "Set-up fee and quarterly management fees. FX rate 1.3445 (13 Apr 2026).",
+    lines: [
+      { desc: "Set-up fee and quarterly management fees", qty: 1, unit: 10200, srcCcy: "GBP", usd: 10200 * 1.3445 },
+    ],
+  },
 ];
 
 const totalInvoiceUSD = INVOICES.reduce((s, inv) => s + inv.usdAmount, 0);
@@ -512,7 +523,7 @@ async function main() {
     { gap: true },
     { sec: "EXPENSES" },
     { label: "Management Fee (2% × NAV)",                 itd: -mgmtFeeAnn,   fy: -mgmtFeeAnn,  q1: -(mgmtFeeAnn/4), note: "Quarterly accrual" },
-    { label: "Legal & Formation (actuals)",               itd: -legalActuals, fy: -legalActuals, q1: 0,           note: "RW Blears + Walkers — see Invoices sheet" },
+    { label: "Legal & Formation (actuals)",               itd: -legalActuals, fy: -legalActuals, q1: 0,           note: "RW Blears + Walkers + Paxiot — see Invoices sheet" },
     { label: "Fund Administration & Audit",               itd: -33000,        fy: -33000,        q1: 0,           note: "Admin $15k + audit $18k" },
     { label: "CIMA & FATCA/CRS",                          itd: -6768,         fy: -6768,         q1: 0,           note: "CIMA $4,268 + FATCA/CRS $2,500" },
     { total: "Total Expenses",                            itd: -totalExpense, fy: -totalExpense, q1: -(mgmtFeeAnn/4) },
@@ -728,7 +739,7 @@ async function main() {
     { gap: true },
     { sec: "EXPENSES CHARGED TO FUND" },
     { label: "Management Fee (2% × NAV p.a.)",                itd: -mgmtFeeAnn, fy: -mgmtFeeAnn, q1: -(mgmtFeeAnn/4), note: "Quarterly — see GP Economics" },
-    { label: "Legal & Formation — actuals (invoices)",        itd: -legalActuals, fy: -legalActuals, q1: 0,          note: "RW Blears F30-2.2 + Walkers 808615" },
+    { label: "Legal & Formation — actuals (invoices)",        itd: -legalActuals, fy: -legalActuals, q1: 0,          note: "RW Blears F30-2.2 + Walkers 808615 + Paxiot F30-2.3" },
     { label: "Fund Administration",                           itd: -15000,      fy: -15000,      q1: 0,              note: "Est. $15,000 p.a." },
     { label: "Statutory Audit (Cayman GAAP)",                 itd: -18000,      fy: -18000,      q1: 0,              note: "Annual — mandatory" },
     { label: "CIMA Registration",                             itd: -4268,       fy: -4268,       q1: 0,              note: "Cayman Islands Monetary Authority" },
@@ -797,7 +808,7 @@ async function main() {
     { label: "CIMA Annual Registration",            itd: 4268,            fy: 4268,            q1: 0,               note: "Cayman Islands Monetary Authority" },
     { label: "Fund Administration",                 itd: 15000,           fy: 15000,           q1: 0,               note: "Est. $15,000 p.a." },
     { label: "Annual Audit (Cayman GAAP / IFRS)",   itd: 18000,           fy: 18000,           q1: 0,               note: "Mandatory for registered funds" },
-    { label: "Legal & Formation — actuals",         itd: legalActuals,    fy: legalActuals,    q1: 0,               note: `RW Blears $${Math.round(INVOICES[0].usdAmount).toLocaleString()} + Walkers $${Math.round(INVOICES[1].usdAmount).toLocaleString()}` },
+    { label: "Legal & Formation — actuals",         itd: legalActuals,    fy: legalActuals,    q1: 0,               note: INVOICES.map(inv => `${inv.supplier} $${Math.round(inv.usdAmount).toLocaleString()}`).join(' + ') },
     { label: "FATCA / CRS Reporting",              itd: 2500,            fy: 2500,            q1: 0,               note: "Annual regulatory reporting" },
     { total: "TOTAL GP OPERATING COSTS",            itd: 5000+4268+15000+18000+legalActuals+2500, fy: 5000+4268+15000+18000+legalActuals+2500, q1: 0 },
     { gap: true },
@@ -902,7 +913,7 @@ async function main() {
     r++;
   });
 
-  addRow(wsInv, [null, c(`FX note: RW Blears GBP invoice converted at £1 = $${FX_GBP_USD} (update in Assumptions if rate changes)`, {
+  addRow(wsInv, [null, c(`FX note: GBP invoices (RW Blears F30-2.2 @ ${FX_GBP_USD}; Paxiot F30-2.3 @ 1.3445) converted to USD at invoice date rates`, {
     font: font({ sz: 8, color: C.MID_GREY, italic: true }), align: align("left") })], r++);
   mergeCells(wsInv, r - 1, 2, r - 1, 12);
 
