@@ -35,10 +35,14 @@ const C = {
 
 const CAYMAN_FUND_ID = "14d76562-2219-4121-b0bd-5379018ac3b4";
 const CAYMAN_GP_ID   = "3540df09-f8bb-43ca-a4de-b89945b6b16b";
-const FX_GBP_USD     = 1.27;
-const MGMT_FEE_RATE  = 0.02;
+const FX_GBP_USD            = 1.27;
+// Paxiot Management Agreement Schedule 1: flat monthly fees
+// Investment Period: £2,400/month (+VAT); Post-Investment Period: £1,400/month
+const PAXIOT_MONTHLY_GBP    = 2400;   // Investment Period
+const PAXIOT_POST_MONTHLY_GBP = 1400; // Post-Investment Period
+const PAXIOT_FX             = 1.3445; // Paxiot invoice FX rate (13 Apr 2026 actual)
+const PAXIOT_ANN_USD        = PAXIOT_MONTHLY_GBP * 12 * PAXIOT_FX;  // £2,400 × 12 × 1.3445
 const CARRY_RATE     = 0.20;
-const HURDLE_RATE    = 0.08;
 
 // ── SUPABASE FETCH ────────────────────────────────────────────────────────────
 function supabaseFetch(table, select = "*", filters = "") {
@@ -330,7 +334,8 @@ async function main() {
   const growthCount  = portfolio.filter(p => p.stage === "Growth").length;
   const seedCount    = portfolio.filter(p => p.stage === "Seed").length;
 
-  const mgmtFeeAnn   = totalCost * MGMT_FEE_RATE;
+  // Paxiot flat fee: £2,400/month × 12 × FX 1.3445 = ~$38,716/year (Investment Period)
+  const mgmtFeeAnn   = PAXIOT_ANN_USD;
   const caymanOps    = 4268 + 15000 + 18000 + 2500; // CIMA + admin + audit + FATCA/CRS
   const legalActuals = totalInvoiceUSD;
   const totalExpense = mgmtFeeAnn + caymanOps + legalActuals;
@@ -364,9 +369,10 @@ async function main() {
            null, null,
            c(`As of: ${now}`, { fill: C.DARK, font: font({ color: C.MID_GREY, sz: 9, italic: true }), align: align("right") })],
     [null, c("Mgmt Fee", { fill: C.DARK, font: font({ color: C.MID_GREY, bold: true, sz: 9 }), align: align("left") }),
-           c("2.0% p.a. on NAV (quarterly)", { fill: C.DARK, font: font({ color: C.WHITE, sz: 9 }), align: align("left") }),
+           c("£2,400/month (Paxiot — flat fee, Investment Period)", { fill: C.DARK, font: font({ color: C.WHITE, sz: 9 }), align: align("left") }),
            null, null,
-           c("Carry: 20% over 8% hurdle", { fill: C.DARK, font: font({ color: C.MID_GREY, sz: 9, italic: true }), align: align("right") })],
+           c("Carry: 20% — no hurdle (LPA Cl.11.1)", { fill: C.DARK, font: font({ color: C.MID_GREY, sz: 9, italic: true }), align: align("right") })],
+
     [null],
     [null, c("Sheet", { fill: C.DARK, font: font({ bold: true, color: C.MID_GREY, sz: 9 }), align: align("left") }),
            c("Contents", { fill: C.DARK, font: font({ bold: true, color: C.WHITE, sz: 9 }), align: align("left") }),
@@ -376,7 +382,8 @@ async function main() {
     ["1", "Assumptions",     "Fund economics, fee parameters, FX, regulatory flags"],
     ["2", "Fund Summary",    "Consolidated P&L, KPIs, portfolio breakdown by stage"],
     ["3", "Portfolio",       `Full investment register — ${portfolio.length} positions, fair values, MOIC`],
-    ["4", "Waterfall",       "LP distribution waterfall — capital, hurdle, catch-up, 80/20"],
+    ["4", "Waterfall",       "LP distribution waterfall — return of capital → 80% LP / 20% FC Group Holding carry"],
+
     ["5", "Cap Accounts",    "LP capital account — contributions, income, expenses, distributions"],
     ["6", "GP Economics",    "Management fee accruals, carry, Cayman running costs"],
     ["7", "Invoices",        "Formation & operating invoices with FX conversion"],
@@ -418,14 +425,19 @@ async function main() {
   addRow(wsAss, [null, hdr("Parameter"), hdr("Value"), hdr("Note"), hdr("Reference")], r++);
 
   const fundEcon = [
-    ["Management Fee Rate",            0.02,       PCT_FMT, "2.0% p.a. on NAV — charged quarterly",          "LPA Clause 7.1"],
-    ["Carried Interest Rate",          0.20,       PCT_FMT, "20% of profits above preferred return",          "LPA Clause 8.2"],
-    ["Preferred Return (Hurdle Rate)", 0.08,       PCT_FMT, "8% p.a. compounded — paid before carry",         "LPA Clause 8.1"],
-    ["GP Catch-Up",                    "100%",     null,    "GP receives 100% until 20/80 split reached",      "LPA Clause 8.3"],
-    ["High-Water Mark",                "Yes",      null,    "Carry only on new high-water mark",               "LPA Clause 8.4"],
-    ["GP Commitment",                  0.01,       PCT_FMT, "GP commits 1% of total fund capital",             "LPA Clause 4.2"],
-    ["Fund Life",                      "10 years", null,    "5yr investment period + 5yr harvest",             "LPA Clause 3.1"],
-    ["Fund Inception",                 "9 Oct 2025", null,  "LP interest transferred from WNL Limited",        "Supabase"],
+    ["Paxiot Management Fee (Investment Period)",  "£2,400/month", null, "Flat monthly fee + VAT — paid quarterly in advance. NOT % of NAV.", "Mgmt Agreement Schedule 1"],
+    ["Paxiot Management Fee (Post-Inv. Period)",  "£1,400/month", null, "Reduced flat fee until LP obtains own AIFM permission.",           "Mgmt Agreement Schedule 1"],
+    ["Paxiot Set-Up Fee",                          "£3,000",       null, "One-off on First Closing Date (2 Apr 2026) + VAT.",                "Mgmt Agreement Schedule 1"],
+    ["Secondment Hosting Fee",                     "£100/month",   null, "FC Group Holding pays Paxiot for R. Hadler secondment.",           "Secondment Agreement Cl.6"],
+    ["Carried Interest Rate",                      0.20,           PCT_FMT, "20% of profits after return of capital — NO hurdle rate.",     "LPA Clause 11.1"],
+    ["Carry Recipient",                            "FC Group Holding Ltd", null, "Arranger and 99% LP — receives carried interest.",          "LPA Clause 11.1 / Arrangement Agreement"],
+    ["Preferred Return / Hurdle Rate",             "None",         null, "LPA Clause 11.1 contains no preferred return or hurdle.",          "LPA Clause 11.1"],
+    ["GP Catch-Up",                                "None",         null, "No catch-up mechanism in any fund document.",                      "LPA Clause 11.1"],
+    ["High-Water Mark",                            "None",         null, "No HWM mechanism in any fund document.",                           "LPA Clause 11.1"],
+    ["GP Commitment",                              0.01,           PCT_FMT, "GP commits 1% of total fund capital.",                         "LPA Clause 5"],
+    ["Formation Costs Cap",                        "$130,000",     null, "Partnership bears formation costs up to $130,000.",                "LPA Clause 7.1"],
+    ["Fund Life",                                  "10 years",     null, "5yr investment period + 5yr harvest period.",                      "LPA Clause 3.1"],
+    ["Fund Inception",                             "9 Oct 2025",   null, "Establishment date; First Closing 2 April 2026.",                  "LPA Recitals"],
   ];
   fundEcon.forEach(([label, val, fmt, note, ref], i) => {
     const bg = i % 2 === 0 ? C.CREAM : C.LIGHT_GREY;
@@ -485,7 +497,8 @@ async function main() {
     ["MOIC (Gross)",               1.00,            1.00,        1.00,            "At cost = 1.0x",           MULT_FMT],
     ["DPI",                        0.00,            0.00,        0.00,            "No distributions to date", '0.00"x"'],
     ["TVPI",                       1.00,            1.00,        1.00,            "= MOIC at cost",           MULT_FMT],
-    ["Preferred Return Accruing", totalCost*0.08,  totalCost*0.08*0.75, totalCost*0.02, "8% p.a. compounded", USD_FMT],
+    // NOTE: No preferred return / hurdle in LPA Clause 11.1 — row removed
+    ["Paxiot Mgmt Fee (ann. $)",   mgmtFeeAnn,     mgmtFeeAnn,  mgmtFeeAnn/4,   "£2,400/month × 12 × FX 1.3445", USD_FMT],
   ];
   kpis.forEach(([label, itd, pq, cq, note, fmt], i) => {
     const bg = i % 2 === 0 ? C.CREAM : C.LIGHT_GREY;
@@ -522,8 +535,9 @@ async function main() {
     { total: "Total Income",                              itd: 0,             fy: 0,            q1: 0 },
     { gap: true },
     { sec: "EXPENSES" },
-    { label: "Management Fee (2% × NAV)",                 itd: -mgmtFeeAnn,   fy: -mgmtFeeAnn,  q1: -(mgmtFeeAnn/4), note: "Quarterly accrual" },
+    { label: "Paxiot Management Fee (£2,400/month flat)",  itd: -mgmtFeeAnn,   fy: -mgmtFeeAnn,  q1: -(mgmtFeeAnn/4), note: "Flat monthly fee — Investment Period. Mgmt Agreement Schedule 1." },
     { label: "Legal & Formation (actuals)",               itd: -legalActuals, fy: -legalActuals, q1: 0,           note: "RW Blears + Walkers + Paxiot — see Invoices sheet" },
+
     { label: "Fund Administration & Audit",               itd: -33000,        fy: -33000,        q1: 0,           note: "Admin $15k + audit $18k" },
     { label: "CIMA & FATCA/CRS",                          itd: -6768,         fy: -6768,         q1: 0,           note: "CIMA $4,268 + FATCA/CRS $2,500" },
     { total: "Total Expenses",                            itd: -totalExpense, fy: -totalExpense, q1: -(mgmtFeeAnn/4) },
@@ -642,7 +656,7 @@ async function main() {
   addRow(wsWf, [null, c("FC CAYMAN FUND I  ·  DISTRIBUTION WATERFALL", {
     fill: C.COBALT_DARK, font: font({ bold: true, sz: 11, color: C.WHITE }), align: align("left") })], r++);
   mergeCells(wsWf, r - 1, 2, r - 1, 6);
-  addRow(wsWf, [null, c("Capital → 8% Preferred Return → 100% GP Catch-Up → 80/20 Split", {
+  addRow(wsWf, [null, c("Return of Capital → 80% LP (FC Group Holding) / 20% FC Group Holding Carry  ·  No hurdle  ·  LPA Clause 11.1", {
     font: font({ sz: 9, color: C.MID_GREY, italic: true }), align: align("left") })], r++);
   mergeCells(wsWf, r - 1, 2, r - 1, 6);
   r++;
@@ -653,14 +667,13 @@ async function main() {
   mergeCells(wsWf, r - 1, 3, r - 1, 5);
 
   const inpRows = {};
+  // LPA Clause 11.1 waterfall: no hurdle, no catch-up, no HWM
   const wfInputs = [
-    ["Total Capital Invested ($)", totalCost, USD2_FMT, "Total fund cost basis"],
-    ["Realisable Value / NAV ($)", totalCost, USD2_FMT, "Update as exits / marks occur"],
-    ["Preferred Return (p.a.)",   0.08,      PCT_FMT,  "8% compounded annually"],
-    ["Carried Interest Rate",     0.20,      PCT_FMT,  "20%"],
-    ["Elapsed Fund Life (years)", 1.0,       '0.0"y"', "Increment annually"],
-    ["LP Interest",               0.99,      PCT_FMT,  "FC Group Holding — 99%"],
-    ["GP Interest",               0.01,      PCT_FMT,  "GP — 1%"],
+    ["Total Capital Invested ($)",   totalCost, USD2_FMT, "Total fund cost basis"],
+    ["Realisable Value / NAV ($)",   totalCost, USD2_FMT, "Update as exits / marks occur"],
+    ["Carried Interest Rate",        0.20,      PCT_FMT,  "20% — FC Group Holding (LPA Cl.11.1)"],
+    ["LP Interest (FC Group Holding)", 0.99,   PCT_FMT,  "FC Group Holding Ltd — sole 99% LP"],
+    ["GP Interest",                  0.01,      PCT_FMT,  "FC Strat. Opps. Fund I GP Ltd — 1%"],
   ];
   wfInputs.forEach(([label, val, fmt, note], i) => {
     const bg = i % 2 === 0 ? C.CREAM : C.LIGHT_GREY;
@@ -674,10 +687,8 @@ async function main() {
   const I = (k) => `C${inpRows[k]}`;
   const INV = I("Total Capital Invested ($)");
   const NAV = I("Realisable Value / NAV ($)");
-  const HUR = I("Preferred Return (p.a.)");
   const CRY = I("Carried Interest Rate");
-  const YRS = I("Elapsed Fund Life (years)");
-  const LP  = I("LP Interest");
+  const LP  = I("LP Interest (FC Group Holding)");
   const GP  = I("GP Interest");
 
   r++;
@@ -685,13 +696,13 @@ async function main() {
   mergeCells(wsWf, r - 1, 2, r - 1, 6);
   addRow(wsWf, [null, hdr("Step"), hdr("Pool ($)"), hdr("LP ($)"), hdr("GP ($)"), hdr("Running Balance ($)")], r++);
 
+  // LPA Clause 11.1 — two-step waterfall: return of capital → 80% LP / 20% FC Group Holding carry
+  // No preferred return, no GP catch-up, no HWM
   const W = r;
   const wfSteps = [
-    ["Total Proceeds Available",                `=${NAV}`,                     `=C${W}*${LP}`,   `=C${W}*${GP}`,   `=C${W}`],
-    ["Step 1: Return of Capital",               `=${INV}`,                     `=C${W+1}*${LP}`, `=C${W+1}*${GP}`, `=MAX(0,F${W}-C${W+1})`],
-    ["Step 2: Preferred Return (8% p.a.)",      `=${INV}*(POWER(1+${HUR},${YRS})-1)`, `=C${W+2}*${LP}`, `=C${W+2}*${GP}`, `=MAX(0,F${W+1}-C${W+2})`],
-    ["Step 3: GP Catch-Up (100%)",              `=MAX(0,(C${W+2}/(1-${CRY}))-C${W+2})`, "=0",    `=C${W+3}`,       `=MAX(0,F${W+2}-C${W+3})`],
-    ["Step 4: Remaining (LP 80% / GP 20%)",     `=MAX(0,F${W+3})`,             `=C${W+4}*(1-${CRY})`, `=C${W+4}*${CRY}`, "=0"],
+    ["Total Proceeds Available",                                           `=${NAV}`,                      `=C${W}*${LP}`,              `=C${W}*${GP}`,              `=C${W}`],
+    ["Step 1: Return of Capital (LPA Cl.11.1(a))",                        `=${INV}`,                      `=C${W+1}*${LP}`,            `=C${W+1}*${GP}`,            `=MAX(0,F${W}-C${W+1})`],
+    ["Step 2: Remaining — 80% LP (FC Group Holding) / 20% Carry (LPA Cl.11.1(b))", `=MAX(0,F${W+1})`,  `=C${W+2}*(1-${CRY})`,       `=C${W+2}*${CRY}`,           "=0"],
   ];
   wfSteps.forEach(([label, pool, lp, gp, bal], i) => {
     const bg = i % 2 === 0 ? C.CREAM : C.LIGHT_GREY;
@@ -702,9 +713,12 @@ async function main() {
       c(0, { f: bal,  fill: bg, font: font(), align: align("right"), border: true, numFmt: USD2_FMT }),
     ], r++);
   });
-  addRow(wsWf, [null, totLbl("TOTAL LP / GP ENTITLEMENT"),
-    c("", { fill: C.GOLD }), tot(`SUM(D${W+1}:D${W+4})`, USD2_FMT, true),
-    tot(`SUM(E${W+1}:E${W+4})`, USD2_FMT, true), c("", { fill: C.GOLD })], r++);
+  addRow(wsWf, [null, totLbl("TOTAL LP / FC GROUP HOLDING ENTITLEMENT"),
+    c("", { fill: C.GOLD }), tot(`SUM(D${W+1}:D${W+2})`, USD2_FMT, true),
+    tot(`SUM(E${W+1}:E${W+2})`, USD2_FMT, true), c("", { fill: C.GOLD })], r++);
+  addRow(wsWf, [null, c("Note: Carry recipient is FC Group Holding Ltd (LPA Cl.11.1 / Arrangement Agreement). No preferred return, catch-up, or HWM.", {
+    font: font({ sz: 8, color: C.MID_GREY, italic: true }), align: align("left") })], r++);
+  mergeCells(wsWf, r - 1, 2, r - 1, 6);
 
   wsWf["!ref"] = `A1:F${r + 2}`;
   XLSX.utils.book_append_sheet(wb, wsWf, "Waterfall");
@@ -738,7 +752,8 @@ async function main() {
     { total: "TOTAL INCOME",                                   itd: 0,           fy: 0,           q1: 0 },
     { gap: true },
     { sec: "EXPENSES CHARGED TO FUND" },
-    { label: "Management Fee (2% × NAV p.a.)",                itd: -mgmtFeeAnn, fy: -mgmtFeeAnn, q1: -(mgmtFeeAnn/4), note: "Quarterly — see GP Economics" },
+    { label: "Paxiot Management Fee (£2,400/month flat)",    itd: -mgmtFeeAnn, fy: -mgmtFeeAnn, q1: -(mgmtFeeAnn/4), note: "Flat fee — Investment Period. Mgmt Agreement Schedule 1." },
+
     { label: "Legal & Formation — actuals (invoices)",        itd: -legalActuals, fy: -legalActuals, q1: 0,          note: "RW Blears F30-2.2 + Walkers 808615 + Paxiot F30-2.3" },
     { label: "Fund Administration",                           itd: -15000,      fy: -15000,      q1: 0,              note: "Est. $15,000 p.a." },
     { label: "Statutory Audit (Cayman GAAP)",                 itd: -18000,      fy: -18000,      q1: 0,              note: "Annual — mandatory" },
@@ -748,8 +763,9 @@ async function main() {
     { gap: true },
     { sec: "DISTRIBUTIONS" },
     { label: "Return of Capital",                             itd: 0,           fy: 0,           q1: 0,              note: "None to date" },
-    { label: "Preferred Return (8%) Paid",                    itd: 0,           fy: 0,           q1: 0,              note: "None declared" },
-    { label: "LP Profit Share (80%)",                         itd: 0,           fy: 0,           q1: 0,              note: "Post-carry — none" },
+    { label: "LP Profit Share (80%) — to FC Group Holding",  itd: 0,           fy: 0,           q1: 0,              note: "Post return of capital — none to date" },
+    { label: "FC Group Holding Carry (20%)",                  itd: 0,           fy: 0,           q1: 0,              note: "No preferred return. LPA Clause 11.1." },
+
     { total: "TOTAL DISTRIBUTIONS",                           itd: 0,           fy: 0,           q1: 0 },
     { gap: true },
     { total: "CLOSING LP CAPITAL ACCOUNT BALANCE",            itd: lpCapital - totalExpense * 0.99, fy: lpCapital - totalExpense * 0.99, q1: lpCapital - (mgmtFeeAnn/4)*0.99 },
@@ -789,19 +805,21 @@ async function main() {
   addRow(wsGp, [null, hdr("Item"), hdr("Inception to Date ($)"), hdr("FY 2025 ($)"), hdr("Q1 2026 ($)"), hdr("Basis / Note")], r++);
 
   const gpSections = [
-    { sec: "MANAGEMENT FEE INCOME" },
-    { label: "Fund NAV (fee basis)",                itd: totalCost,       fy: totalCost,       q1: totalCost,       note: "At cost — update quarterly" },
-    { label: "Management Fee Rate",                 itd: MGMT_FEE_RATE,   fy: MGMT_FEE_RATE,   q1: MGMT_FEE_RATE,   note: "2.0% p.a.", fmt: PCT_FMT },
-    { label: "Annual Management Fee",               itd: mgmtFeeAnn,      fy: mgmtFeeAnn,      q1: 0,               note: "NAV × 2%" },
-    { label: "Quarterly Accrual (÷4)",              itd: mgmtFeeAnn/4,    fy: mgmtFeeAnn/4,    q1: mgmtFeeAnn/4,    note: "Payable at quarter-end" },
-    { total: "TOTAL MANAGEMENT FEE EARNED",         itd: mgmtFeeAnn,      fy: mgmtFeeAnn,      q1: mgmtFeeAnn/4 },
+    { sec: "PAXIOT MANAGEMENT FEE INCOME (FLAT MONTHLY)" },
+    { label: "Monthly Fee — Investment Period (GBP)",   itd: PAXIOT_MONTHLY_GBP * 12, fy: PAXIOT_MONTHLY_GBP * 12, q1: PAXIOT_MONTHLY_GBP * 3, note: "£2,400/month + VAT. Mgmt Agreement Schedule 1.", fmt: GBP_FMT },
+    { label: "FX Rate (GBP/USD)",                       itd: PAXIOT_FX,        fy: PAXIOT_FX,        q1: PAXIOT_FX,        note: "Rate at invoice date — update quarterly", fmt: "0.0000" },
+    { label: "Annual Fee (USD equivalent)",             itd: mgmtFeeAnn,       fy: mgmtFeeAnn,       q1: 0,                note: "£2,400 × 12 × 1.3445" },
+    { label: "Quarterly Accrual (÷4) USD",              itd: mgmtFeeAnn/4,     fy: mgmtFeeAnn/4,     q1: mgmtFeeAnn/4,     note: "Paid quarterly in advance" },
+    { total: "TOTAL PAXIOT FEE EARNED",                 itd: mgmtFeeAnn,       fy: mgmtFeeAnn,       q1: mgmtFeeAnn/4 },
+
     { gap: true },
-    { sec: "CARRIED INTEREST (ACCRUED — NOT YET EARNED)" },
-    { label: "Gross Portfolio Value",               itd: totalCost,       fy: totalCost,       q1: totalCost,       note: "At cost" },
-    { label: "Preferred Return Threshold (8% × invested)", itd: totalCost*0.08, fy: totalCost*0.08, q1: totalCost*0.02, note: "Compounds annually" },
-    { label: "Gain Above Preferred Return",         itd: 0,               fy: 0,               q1: 0,               note: "Nil — at cost" },
-    { label: "Carried Interest (20%)",              itd: 0,               fy: 0,               q1: 0,               note: "Nil — no gains above hurdle" },
+    { sec: "CARRIED INTEREST — FC GROUP HOLDING LTD (NOT YET EARNED)" },
+    { label: "Gross Portfolio Value (at cost)",     itd: totalCost,       fy: totalCost,       q1: totalCost,       note: "At cost — update when marked" },
+    { label: "Return of Capital (Step 1)",          itd: totalCost,       fy: totalCost,       q1: totalCost,       note: "LPA Cl.11.1(a) — returned first" },
+    { label: "Gain Above Capital (Step 2 pool)",    itd: 0,               fy: 0,               q1: 0,               note: "Nil — at cost, no exits" },
+    { label: "Carried Interest 20% — FC Group Holding", itd: 0,           fy: 0,               q1: 0,               note: "LPA Cl.11.1(b) — no hurdle, no catch-up" },
     { total: "TOTAL CARRY EARNED",                  itd: 0,               fy: 0,               q1: 0 },
+
     { gap: true },
     { sec: "GP OPERATING COSTS (CAYMAN-SPECIFIC)" },
     { label: "Cayman Registered Agent",             itd: 5000,            fy: 5000,            q1: 0,               note: "Est. $5,000 p.a." },
@@ -813,11 +831,12 @@ async function main() {
     { total: "TOTAL GP OPERATING COSTS",            itd: 5000+4268+15000+18000+legalActuals+2500, fy: 5000+4268+15000+18000+legalActuals+2500, q1: 0 },
     { gap: true },
     { sec: "GP NET ECONOMICS" },
-    { label: "Management Fee Income",               itd: mgmtFeeAnn,      fy: mgmtFeeAnn,      q1: mgmtFeeAnn/4,    note: "" },
-    { label: "Carried Interest",                    itd: 0,               fy: 0,               q1: 0,               note: "" },
+    { label: "Paxiot Fee Income",                   itd: mgmtFeeAnn,      fy: mgmtFeeAnn,      q1: mgmtFeeAnn/4,    note: "Flat monthly fee" },
+    { label: "Carry — FC Group Holding Ltd (accrued)", itd: 0,            fy: 0,               q1: 0,               note: "No hurdle rate — LPA Cl.11.1" },
     { total: "Total GP Revenue",                    itd: mgmtFeeAnn,      fy: mgmtFeeAnn,      q1: mgmtFeeAnn/4 },
     { label: "Less: GP Operating Costs",            itd: -(5000+4268+15000+18000+legalActuals+2500), fy: -(5000+4268+15000+18000+legalActuals+2500), q1: 0, note: "" },
     { total: "GP NET INCOME / (LOSS)",              itd: mgmtFeeAnn-(5000+4268+15000+18000+legalActuals+2500), fy: mgmtFeeAnn-(5000+4268+15000+18000+legalActuals+2500), q1: mgmtFeeAnn/4 },
+
   ];
 
   gpSections.forEach((line) => {
