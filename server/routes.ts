@@ -2468,6 +2468,7 @@ Founders Capital`;
         "Stage", "Closing Date", "Quarter closed", "Month Closed",
         "Investment Currency", "FC investment amount",
         "FC Investment USD Conversion", "FC Investment PV USD",
+        "LIVE Cost Base (BS)", "PV of Investment Value (From Portfolio Tracking)",
         "USD INVESTMENT VALUE", "MOIC",
         "investors per deal", "Pre-money valuation",
         "Business Type", "Location", "Underlying Company Jurisdiction",
@@ -2518,20 +2519,26 @@ Founders Capital`;
 
       const records = fcRecords.map((r: any) => {
         const f = r.fields;
-        // FC Investment USD Conversion can be a scalar number OR an array (rollup)
+
+        // Primary source: "LIVE Cost Base (BS)" — this is exactly what the
+        // Airtable Balance Sheet view displays. Fall back chain if missing:
+        //   LIVE Cost Base (BS) → FC Investment USD Conversion (array or scalar) → FC investment amount
+        const liveCostBase = typeof f["LIVE Cost Base (BS)"] === "number" ? f["LIVE Cost Base (BS)"] : null;
         const rawUsdConv = f["FC Investment USD Conversion"];
-        const fcInvestedUsd = Array.isArray(rawUsdConv)
+        const usdConv = Array.isArray(rawUsdConv)
           ? rawUsdConv.reduce((a: number, b: number) => a + b, 0)
-          : typeof rawUsdConv === "number" && rawUsdConv > 0
-            ? rawUsdConv
-            : (f["FC investment amount"] ?? 0);
-        // FC Investment PV USD — same pattern
+          : typeof rawUsdConv === "number" && rawUsdConv > 0 ? rawUsdConv : null;
+        const fcInvestedUsd = liveCostBase ?? usdConv ?? (f["FC investment amount"] ?? 0);
+
+        // Primary PV source: "PV of Investment Value (From Portfolio Tracking)"
+        // Fall back to FC Investment PV USD, then cost basis
+        const livePv = typeof f["PV of Investment Value (From Portfolio Tracking)"] === "number"
+          ? f["PV of Investment Value (From Portfolio Tracking)"] : null;
         const rawPvUsd = f["FC Investment PV USD"];
-        const fcPvUsd = Array.isArray(rawPvUsd)
+        const pvUsd = Array.isArray(rawPvUsd)
           ? rawPvUsd.reduce((a: number, b: number) => a + b, 0)
-          : typeof rawPvUsd === "number" && rawPvUsd > 0
-            ? rawPvUsd
-            : fcInvestedUsd;
+          : typeof rawPvUsd === "number" && rawPvUsd > 0 ? rawPvUsd : null;
+        const fcPvUsd = livePv ?? pvUsd ?? fcInvestedUsd;
         const squareImage = Array.isArray(f["Deal Square Image"]) && f["Deal Square Image"].length > 0
           ? f["Deal Square Image"][0]?.thumbnails?.large?.url ?? f["Deal Square Image"][0]?.url ?? null
           : null;
