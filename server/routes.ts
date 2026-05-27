@@ -2445,9 +2445,8 @@ Founders Capital`;
 
       // Airtable returns max 100 records per page — must follow offset pagination
       const baseUrl = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
-      // Only FC's own holdings: deal codes ending in -FC (excludes co-investor tranches: -OD, -SYD, -DEL, -TF etc)
-      // Also exclude pipeline/prospecting records without a deal code
-      baseUrl.searchParams.set("filterByFormula", `RIGHT({Deal Code},3)='-FC'`);
+      // Exclude pipeline/prospecting only — FC-specific filtering done in JS below
+      baseUrl.searchParams.set("filterByFormula", `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`);
       fields.forEach(f => baseUrl.searchParams.append("fields[]", f));
 
       const allRawRecords: any[] = [];
@@ -2477,7 +2476,14 @@ Founders Capital`;
         if (pageCount > 20) break; // safety cap at 2000 records
       } while (offset);
 
-      const records = allRawRecords.map((r: any) => {
+      // Keep only FC's own holdings (deal codes ending in -FC)
+      // Excludes co-investor tranches: -OD, -SYD, -DEL, -TF, -JP, -SYDFS etc.
+      const fcRecords = allRawRecords.filter((r: any) => {
+        const code: string = r.fields?.["Deal Code"] ?? "";
+        return code.endsWith("-FC");
+      });
+
+      const records = fcRecords.map((r: any) => {
         const f = r.fields;
         // Flatten FC Investment USD Conversion array -> single number
         const fcInvestedUsd = Array.isArray(f["FC Investment USD Conversion"])
