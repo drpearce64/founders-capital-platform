@@ -2485,13 +2485,20 @@ Founders Capital`;
 
       const records = fcRecords.map((r: any) => {
         const f = r.fields;
-        // Flatten FC Investment USD Conversion array -> single number
-        const fcInvestedUsd = Array.isArray(f["FC Investment USD Conversion"])
-          ? f["FC Investment USD Conversion"].reduce((a: number, b: number) => a + b, 0)
-          : (f["FC investment amount"] ?? 0);
-        const fcPvUsd = Array.isArray(f["FC Investment PV USD"])
-          ? f["FC Investment PV USD"].reduce((a: number, b: number) => a + b, 0)
-          : fcInvestedUsd;
+        // FC Investment USD Conversion can be a scalar number OR an array (rollup)
+        const rawUsdConv = f["FC Investment USD Conversion"];
+        const fcInvestedUsd = Array.isArray(rawUsdConv)
+          ? rawUsdConv.reduce((a: number, b: number) => a + b, 0)
+          : typeof rawUsdConv === "number" && rawUsdConv > 0
+            ? rawUsdConv
+            : (f["FC investment amount"] ?? 0);
+        // FC Investment PV USD — same pattern
+        const rawPvUsd = f["FC Investment PV USD"];
+        const fcPvUsd = Array.isArray(rawPvUsd)
+          ? rawPvUsd.reduce((a: number, b: number) => a + b, 0)
+          : typeof rawPvUsd === "number" && rawPvUsd > 0
+            ? rawPvUsd
+            : fcInvestedUsd;
         const squareImage = Array.isArray(f["Deal Square Image"]) && f["Deal Square Image"].length > 0
           ? f["Deal Square Image"][0]?.thumbnails?.large?.url ?? f["Deal Square Image"][0]?.url ?? null
           : null;
