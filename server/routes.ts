@@ -2417,6 +2417,35 @@ Founders Capital`;
     }
   });
 
+  // GET /api/fc-investments-debug — returns raw Airtable fields for first 5 -FC records
+  app.get("/api/fc-investments-debug", async (_req, res) => {
+    try {
+      const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
+      const AIRTABLE_TABLE = "tbln6AszmitsErPgh";
+      const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
+      if (!AIRTABLE_PAT) return res.status(500).json({ error: "no PAT" });
+      const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
+      url.searchParams.set("maxRecords", "10");
+      url.searchParams.set("filterByFormula", `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`);
+      const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${AIRTABLE_PAT}` } });
+      const j: any = await r.json();
+      const out = (j.records ?? []).filter((rec: any) => (rec.fields?.["Deal Code"] ?? "").endsWith("-FC")).slice(0, 5).map((rec: any) => {
+        const f = rec.fields;
+        return {
+          name: f["CompanyName"],
+          deal_code: f["Deal Code"],
+          fc_investment_amount: f["FC investment amount"],
+          fc_investment_usd_conversion: f["FC Investment USD Conversion"],
+          fc_investment_pv_usd: f["FC Investment PV USD"],
+          usd_investment_value: f["USD INVESTMENT VALUE"],
+          investment_currency: f["Investment Currency"],
+          all_keys: Object.keys(f).filter(k => k.toLowerCase().includes('invest') || k.toLowerCase().includes('usd') || k.toLowerCase().includes('cost') || k.toLowerCase().includes('amount')),
+        };
+      });
+      res.json(out);
+    } catch(e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── FC Own Investments (Airtable live proxy) ───────────────────────────────
   // GET /api/fc-investments — fetches directly from Airtable Deals table
   // and returns cleaned deal records for the FC Own Investments dashboard.
