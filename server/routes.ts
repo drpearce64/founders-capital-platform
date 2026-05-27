@@ -2444,9 +2444,9 @@ Founders Capital`;
       ];
 
       const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
-      url.searchParams.set("maxRecords", "200");
-      // Only fetch Closed or Live deals (exclude pipeline junk)
-      url.searchParams.set("filterByFormula", `OR({Status}='Closed',{Status}='Live',{Status}='Exited')`);
+      url.searchParams.set("maxRecords", "500");
+      // Exclude only pipeline/prospecting — fetch all closed/live/exited/active holdings
+      url.searchParams.set("filterByFormula", `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`);
       fields.forEach(f => url.searchParams.append("fields[]", f));
 
       const airtableRes = await fetch(url.toString(), {
@@ -2483,7 +2483,7 @@ Founders Capital`;
           name: f["CompanyName"] ?? "Unknown",
           deal_code: f["Deal Code"] ?? "",
           status: f["Status"] ?? "",
-          holding_status: f["Holding Status"] ?? "",
+          holding_status: f["Holding Status"] || "Portfolio company",
           stage: f["Stage"] ?? "",
           closing_date: f["Closing Date"] ?? null,
           quarter_closed: f["Quarter closed"] ?? "",
