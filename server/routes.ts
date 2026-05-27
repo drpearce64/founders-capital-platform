@@ -2445,8 +2445,9 @@ Founders Capital`;
 
       // Airtable returns max 100 records per page — must follow offset pagination
       const baseUrl = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
-      // Exclude only pipeline/prospecting — fetch all closed/live/exited/active holdings
-      baseUrl.searchParams.set("filterByFormula", `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`);
+      // Only FC's own holdings: deal codes ending in -FC (excludes co-investor tranches: -OD, -SYD, -DEL, -TF etc)
+      // Also exclude pipeline/prospecting records without a deal code
+      baseUrl.searchParams.set("filterByFormula", `RIGHT({Deal Code},3)='-FC'`);
       fields.forEach(f => baseUrl.searchParams.append("fields[]", f));
 
       const allRawRecords: any[] = [];
