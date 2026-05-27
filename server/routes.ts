@@ -596,7 +596,7 @@ Founders Capital`;
       total_fair_value: totalFairValue,
       unrealised_gain: totalFairValue - totalInvested,
       spvs,
-      recent_investments: investments.slice(0, 5),
+      recent_investments: investments,
     });
   });
 
@@ -2425,11 +2425,11 @@ Founders Capital`;
       const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
       if (!AIRTABLE_PAT) return res.status(500).json({ error: "no PAT" });
       const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
-      url.searchParams.set("maxRecords", "10");
+      url.searchParams.set("maxRecords", "500");
       url.searchParams.set("filterByFormula", `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`);
       const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${AIRTABLE_PAT}` } });
       const j: any = await r.json();
-      const out = (j.records ?? []).filter((rec: any) => (rec.fields?.["Deal Code"] ?? "").endsWith("-FC")).slice(0, 5).map((rec: any) => {
+      const out = (j.records ?? []).filter((rec: any) => (rec.fields?.["Deal Code"] ?? "").endsWith("-FC")).map((rec: any) => {
         const f = rec.fields;
         return {
           name: f["CompanyName"],
@@ -2439,10 +2439,11 @@ Founders Capital`;
           fc_investment_pv_usd: f["FC Investment PV USD"],
           usd_investment_value: f["USD INVESTMENT VALUE"],
           investment_currency: f["Investment Currency"],
-          final_investment_value: f["Final Investment Value (From Commitments)"],
-          actually_received: f["Actually Received (from Investments) Rollup (from Commitments)"],
+          usd_amount_for_formulas: f["USD AMOUNT (For formulas)"],
+          accurate_final_access_fee: f["ACCURATE FINAL ACCESS FEE Rollup (from Investments 2)"],
+          balance_sheet_gbp_cost_base: f["Balance Sheet GBP Cost Base"],
           fc_investment_deal_currency: f["FC Investment Deal Currency (from Investments 2)"],
-          all_keys: Object.keys(f).filter(k => k.toLowerCase().includes('invest') || k.toLowerCase().includes('usd') || k.toLowerCase().includes('cost') || k.toLowerCase().includes('amount') || k.toLowerCase().includes('final') || k.toLowerCase().includes('actual')),
+          wire_amount: f["Wire Amount"],
         };
       });
       res.json(out);
