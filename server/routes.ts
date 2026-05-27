@@ -2443,30 +2443,40 @@ Founders Capital`;
         "Portfolio Appreciation ($)",
       ];
 
-      const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
-      url.searchParams.set("maxRecords", "500");
+      // Airtable returns max 100 records per page — must follow offset pagination
+      const baseUrl = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
       // Exclude only pipeline/prospecting — fetch all closed/live/exited/active holdings
-      url.searchParams.set("filterByFormula", `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`);
-      fields.forEach(f => url.searchParams.append("fields[]", f));
+      baseUrl.searchParams.set("filterByFormula", `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`);
+      fields.forEach(f => baseUrl.searchParams.append("fields[]", f));
 
-      const airtableRes = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${AIRTABLE_PAT}` },
-      });
+      const allRawRecords: any[] = [];
+      let offset: string | undefined = undefined;
+      let pageCount = 0;
+      do {
+        const pageUrl = new URL(baseUrl.toString());
+        if (offset) pageUrl.searchParams.set("offset", offset);
+        const airtableRes = await fetch(pageUrl.toString(), {
+          headers: { Authorization: `Bearer ${AIRTABLE_PAT}` },
+        });
+        if (!airtableRes.ok) {
+          const text = await airtableRes.text();
+          let parsed: any;
+          try { parsed = JSON.parse(text); } catch { parsed = { error: { message: text } }; }
+          const msg = parsed?.error?.message ?? text;
+          const isPermission = msg.includes("INVALID_PERMISSIONS") || airtableRes.status === 403;
+          const displayMsg = isPermission
+            ? `Airtable token permission error: the AIRTABLE_PAT on Railway must have 'data.records:read' scope AND access to the 'Founders Capital 2.0' base. Update the token at airtable.com/create/tokens.`
+            : msg;
+          return res.status(airtableRes.status).json({ error: displayMsg });
+        }
+        const json: any = await airtableRes.json();
+        allRawRecords.push(...(json.records ?? []));
+        offset = json.offset;
+        pageCount++;
+        if (pageCount > 20) break; // safety cap at 2000 records
+      } while (offset);
 
-      if (!airtableRes.ok) {
-        const text = await airtableRes.text();
-        let parsed: any;
-        try { parsed = JSON.parse(text); } catch { parsed = { error: { message: text } }; }
-        const msg = parsed?.error?.message ?? text;
-        const isPermission = msg.includes("INVALID_PERMISSIONS") || airtableRes.status === 403;
-        const displayMsg = isPermission
-          ? `Airtable token permission error: the AIRTABLE_PAT on Railway must have 'data.records:read' scope AND access to the 'Founders Capital 2.0' base. Update the token at airtable.com/create/tokens.`
-          : msg;
-        return res.status(airtableRes.status).json({ error: displayMsg });
-      }
-
-      const json: any = await airtableRes.json();
-      const records = (json.records ?? []).map((r: any) => {
+      const records = allRawRecords.map((r: any) => {
         const f = r.fields;
         // Flatten FC Investment USD Conversion array -> single number
         const fcInvestedUsd = Array.isArray(f["FC Investment USD Conversion"])
