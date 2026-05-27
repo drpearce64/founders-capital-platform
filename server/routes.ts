@@ -2439,7 +2439,10 @@ Founders Capital`;
           fc_investment_pv_usd: f["FC Investment PV USD"],
           usd_investment_value: f["USD INVESTMENT VALUE"],
           investment_currency: f["Investment Currency"],
-          all_keys: Object.keys(f).filter(k => k.toLowerCase().includes('invest') || k.toLowerCase().includes('usd') || k.toLowerCase().includes('cost') || k.toLowerCase().includes('amount')),
+          final_investment_value: f["Final Investment Value (From Commitments)"],
+          actually_received: f["Actually Received (from Investments) Rollup (from Commitments)"],
+          fc_investment_deal_currency: f["FC Investment Deal Currency (from Investments 2)"],
+          all_keys: Object.keys(f).filter(k => k.toLowerCase().includes('invest') || k.toLowerCase().includes('usd') || k.toLowerCase().includes('cost') || k.toLowerCase().includes('amount') || k.toLowerCase().includes('final') || k.toLowerCase().includes('actual')),
         };
       });
       res.json(out);
