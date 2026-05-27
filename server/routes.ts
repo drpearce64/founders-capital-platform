@@ -2439,11 +2439,9 @@ Founders Capital`;
           fc_investment_pv_usd: f["FC Investment PV USD"],
           usd_investment_value: f["USD INVESTMENT VALUE"],
           investment_currency: f["Investment Currency"],
-          usd_amount_for_formulas: f["USD AMOUNT (For formulas)"],
-          accurate_final_access_fee: f["ACCURATE FINAL ACCESS FEE Rollup (from Investments 2)"],
-          balance_sheet_gbp_cost_base: f["Balance Sheet GBP Cost Base"],
+          init_inv_pe: f["Initial Investment value updated with PEs (Still Invested)"],
+          live_market_value_usd: f["Live Market Value of Investment USD"],
           fc_investment_deal_currency: f["FC Investment Deal Currency (from Investments 2)"],
-          wire_amount: f["Wire Amount"],
         };
       });
       res.json(out);
@@ -2468,7 +2466,8 @@ Founders Capital`;
         "Stage", "Closing Date", "Quarter closed", "Month Closed",
         "Investment Currency", "FC investment amount",
         "FC Investment USD Conversion", "FC Investment PV USD",
-        "LIVE Cost Base (BS)", "PV of Investment Value (From Portfolio Tracking)",
+        "Initial Investment value updated with PEs (Still Invested)",
+        "Live Market Value of Investment USD",
         "USD INVESTMENT VALUE", "MOIC",
         "investors per deal", "Pre-money valuation",
         "Business Type", "Location", "Underlying Company Jurisdiction",
@@ -2520,25 +2519,26 @@ Founders Capital`;
       const records = fcRecords.map((r: any) => {
         const f = r.fields;
 
-        // Primary source: "LIVE Cost Base (BS)" — this is exactly what the
-        // Airtable Balance Sheet view displays. Fall back chain if missing:
-        //   LIVE Cost Base (BS) → FC Investment USD Conversion (array or scalar) → FC investment amount
-        const liveCostBase = typeof f["LIVE Cost Base (BS)"] === "number" ? f["LIVE Cost Base (BS)"] : null;
+        // Primary cost basis: "Initial Investment value updated with PEs (Still Invested)"
+        // This is the field the Airtable Balance Sheet "LIVE Cost Base (BS)" column reads.
+        // Fall back: FC Investment USD Conversion (array or scalar) → FC investment amount
+        const initInvPE = typeof f["Initial Investment value updated with PEs (Still Invested)"] === "number"
+          ? f["Initial Investment value updated with PEs (Still Invested)"] : null;
         const rawUsdConv = f["FC Investment USD Conversion"];
         const usdConv = Array.isArray(rawUsdConv)
           ? rawUsdConv.reduce((a: number, b: number) => a + b, 0)
           : typeof rawUsdConv === "number" && rawUsdConv > 0 ? rawUsdConv : null;
-        const fcInvestedUsd = liveCostBase ?? usdConv ?? (f["FC investment amount"] ?? 0);
+        const fcInvestedUsd = initInvPE ?? usdConv ?? (f["FC investment amount"] ?? 0);
 
-        // Primary PV source: "PV of Investment Value (From Portfolio Tracking)"
-        // Fall back to FC Investment PV USD, then cost basis
-        const livePv = typeof f["PV of Investment Value (From Portfolio Tracking)"] === "number"
-          ? f["PV of Investment Value (From Portfolio Tracking)"] : null;
+        // Primary PV: "Live Market Value of Investment USD"
+        // Fall back: FC Investment PV USD → cost basis
+        const liveMktVal = typeof f["Live Market Value of Investment USD"] === "number"
+          ? f["Live Market Value of Investment USD"] : null;
         const rawPvUsd = f["FC Investment PV USD"];
         const pvUsd = Array.isArray(rawPvUsd)
           ? rawPvUsd.reduce((a: number, b: number) => a + b, 0)
           : typeof rawPvUsd === "number" && rawPvUsd > 0 ? rawPvUsd : null;
-        const fcPvUsd = livePv ?? pvUsd ?? fcInvestedUsd;
+        const fcPvUsd = liveMktVal ?? pvUsd ?? fcInvestedUsd;
         const squareImage = Array.isArray(f["Deal Square Image"]) && f["Deal Square Image"].length > 0
           ? f["Deal Square Image"][0]?.thumbnails?.large?.url ?? f["Deal Square Image"][0]?.url ?? null
           : null;
