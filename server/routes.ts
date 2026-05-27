@@ -30,6 +30,32 @@ async function audit(
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+
+  // ── Connectivity diagnostic ──────────────────────────────────────────────
+  app.get("/api/ping", async (_req, res) => {
+    const results: Record<string, any> = {
+      node: process.version,
+      env_supabase_url: process.env.SUPABASE_URL ? "set" : "missing",
+      env_anon_key: process.env.SUPABASE_ANON_KEY ? "set" : "missing",
+    };
+    // Test raw HTTPS fetch to Supabase
+    try {
+      const r = await fetch("https://yoyrwrdzivygufbzckdv.supabase.co/rest/v1/entities?limit=1", {
+        headers: {
+          apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y",
+          Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      results.supabase_fetch_status = r.status;
+      results.supabase_ok = r.ok;
+    } catch (e: any) {
+      results.supabase_fetch_error = e?.message;
+      results.supabase_fetch_cause = e?.cause?.message ?? e?.cause?.code;
+    }
+    res.json(results);
+  });
+
   // ── Entities (SPVs) ────────────────────────────────────────────────────────
 
   app.get("/api/entities", async (_req, res) => {
