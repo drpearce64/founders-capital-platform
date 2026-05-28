@@ -2430,7 +2430,7 @@ Founders Capital`;
       url.searchParams.set("maxRecords", "500");
       // If name filter provided, search by it; otherwise broad filter
       const formula = nameFilter
-        ? `SEARCH(LOWER('${nameFilter.replace(/'/g, "\\'")}'}, LOWER({CompanyName}))>0`
+        ? `SEARCH(LOWER('${nameFilter.replace(/'/g, "\\' ")}'), LOWER({CompanyName}))>0`
         : `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`;
       url.searchParams.set("filterByFormula", formula);
       const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${AIRTABLE_PAT}` } });
