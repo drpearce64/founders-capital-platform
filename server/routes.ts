@@ -2517,26 +2517,40 @@ Founders Capital`;
         if (pageCount > 20) break; // safety cap at 2000 records
       } while (offset);
 
-      // Keep only FC's own holdings (deal codes ending in -FC)
-      // Excludes co-investor tranches: -OD, -SYD, -DEL, -TF, -JP, -SYDFS etc.
+      // Keep records that are FC's own holdings:
+      // Primary: deal code ends in -FC
+      // Also include non-FC-coded records where FC Investment USD Conversion is populated
+      // (e.g. OAI-1125-SYD has -SYD code but fc_investment_usd_conversion reflects FC's slice)
+      // Exclude pure co-investor records: -OD, -DEL, -TF, -JP, -SYDFS with no FC rollup
       const fcRecords = allRawRecords.filter((r: any) => {
         const code: string = r.fields?.["Deal Code"] ?? "";
-        return code.endsWith("-FC");
+        if (code.endsWith("-FC")) return true;
+        // Include if FC Investment USD Conversion is populated (FC has a direct tracked slice)
+        const conv = r.fields?.["FC Investment USD Conversion"];
+        const convVal = Array.isArray(conv)
+          ? conv.reduce((a: number, b: number) => a + b, 0)
+          : typeof conv === "number" ? conv : 0;
+        return convVal > 0;
       });
 
       const records = fcRecords.map((r: any) => {
         const f = r.fields;
 
-        // Cost basis: FC investment amount — FC's direct cheque, always reliable.
-        // The FC Investment USD Conversion rollup is unreliable (sums all investors, not just FC).
-        const fcInvestedUsd: number = f["FC investment amount"] ?? 0;
+        // Cost basis: FC Investment USD Conversion rollup is authoritative when populated —
+        // it reflects FC's exact tracked slice (e.g. OAI-1024-FC shows $5,587.49 not $500K).
+        // Fall back to FC investment amount only when rollup is absent.
+        const rawUsdConv = f["FC Investment USD Conversion"];
+        const convVal = Array.isArray(rawUsdConv)
+          ? rawUsdConv.reduce((a: number, b: number) => a + b, 0)
+          : typeof rawUsdConv === "number" && rawUsdConv > 0 ? rawUsdConv : 0;
+        const fcInvestedUsd: number = convVal > 0 ? convVal : (f["FC investment amount"] ?? 0);
 
-        // PV: FC Investment PV USD rollup. If missing/zero, fall back to cost.
+        // PV: FC Investment PV USD rollup. Fall back to cost if absent.
         const rawPvUsd = f["FC Investment PV USD"];
         const pvFromRollup = Array.isArray(rawPvUsd)
           ? rawPvUsd.reduce((a: number, b: number) => a + b, 0)
-          : typeof rawPvUsd === "number" && rawPvUsd > 0 ? rawPvUsd : null;
-        const fcPvUsd = pvFromRollup ?? fcInvestedUsd;
+          : typeof rawPvUsd === "number" && rawPvUsd > 0 ? rawPvUsd : 0;
+        const fcPvUsd = pvFromRollup > 0 ? pvFromRollup : fcInvestedUsd;
         const squareImage = Array.isArray(f["Deal Square Image"]) && f["Deal Square Image"].length > 0
           ? f["Deal Square Image"][0]?.thumbnails?.large?.url ?? f["Deal Square Image"][0]?.url ?? null
           : null;
