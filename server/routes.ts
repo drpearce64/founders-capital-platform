@@ -2424,12 +2424,22 @@ Founders Capital`;
       const AIRTABLE_TABLE = "tbln6AszmitsErPgh";
       const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
       if (!AIRTABLE_PAT) return res.status(500).json({ error: "no PAT" });
+      // Support ?name=OpenAI to filter by company name (partial, case-insensitive)
+      const nameFilter = ((_req as any).query?.name ?? "").toString().toLowerCase();
       const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`);
       url.searchParams.set("maxRecords", "500");
-      url.searchParams.set("filterByFormula", `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`);
+      // If name filter provided, search by it; otherwise broad filter
+      const formula = nameFilter
+        ? `SEARCH(LOWER('${nameFilter.replace(/'/g, "\\'")}'}, LOWER({CompanyName}))>0`
+        : `NOT(OR({Status}='Pipeline',{Status}='Prospecting',{Status}='Dead',{Status}='Pass'))`;
+      url.searchParams.set("filterByFormula", formula);
       const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${AIRTABLE_PAT}` } });
       const j: any = await r.json();
-      const out = (j.records ?? []).filter((rec: any) => (rec.fields?.["Deal Code"] ?? "").endsWith("-FC")).map((rec: any) => {
+      const out = (j.records ?? []).filter((rec: any) => {
+        const code = (rec.fields?.["Deal Code"] ?? "").endsWith("-FC");
+        if (nameFilter) return true; // show all matching name regardless of code
+        return code;
+      }).map((rec: any) => {
         const f = rec.fields;
         return {
           name: f["CompanyName"],
