@@ -2517,19 +2517,16 @@ Founders Capital`;
       const records = fcRecords.map((r: any) => {
         const f = r.fields;
 
-        // Cost basis: FC Investment USD Conversion (rollup array of all tranches for this deal)
-        const rawUsdConv = f["FC Investment USD Conversion"];
-        const fcInvestedUsd = Array.isArray(rawUsdConv)
-          ? rawUsdConv.reduce((a: number, b: number) => a + b, 0)
-          : typeof rawUsdConv === "number" && rawUsdConv > 0 ? rawUsdConv
-          : (f["FC investment amount"] ?? 0);
+        // Cost basis: FC investment amount — FC's direct cheque, always reliable.
+        // The FC Investment USD Conversion rollup is unreliable (sums all investors, not just FC).
+        const fcInvestedUsd: number = f["FC investment amount"] ?? 0;
 
-        // PV: FC Investment PV USD (rollup)
+        // PV: FC Investment PV USD rollup. If missing/zero, fall back to cost.
         const rawPvUsd = f["FC Investment PV USD"];
-        const fcPvUsd = Array.isArray(rawPvUsd)
+        const pvFromRollup = Array.isArray(rawPvUsd)
           ? rawPvUsd.reduce((a: number, b: number) => a + b, 0)
-          : typeof rawPvUsd === "number" && rawPvUsd > 0 ? rawPvUsd
-          : fcInvestedUsd;
+          : typeof rawPvUsd === "number" && rawPvUsd > 0 ? rawPvUsd : null;
+        const fcPvUsd = pvFromRollup ?? fcInvestedUsd;
         const squareImage = Array.isArray(f["Deal Square Image"]) && f["Deal Square Image"].length > 0
           ? f["Deal Square Image"][0]?.thumbnails?.large?.url ?? f["Deal Square Image"][0]?.url ?? null
           : null;
