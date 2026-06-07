@@ -7,6 +7,7 @@ import { execFile, fork } from "child_process";
 import { promisify } from "util";
 import os from "os";
 import supabase from "./supabase";
+import { runIntegrityCheck } from "./integrity/integrity_runner";
 
 const execFileAsync = promisify(execFile);
 
@@ -1432,6 +1433,32 @@ Founders Capital`;
       .maybeSingle();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data ?? { status: "no_sync_yet" });
+  });
+
+  // ── Data Integrity Check ──────────────────────────────────────────────────
+
+  // GET /api/integrity/status — last check result from audit_log (fast, no Airtable call)
+  app.get("/api/integrity/status", async (_req, res) => {
+    const { data, error } = await supabase
+      .from("audit_log")
+      .select("*")
+      .eq("table_name", "integrity_check")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data ?? { action: "no_check_yet", description: "No integrity check has run yet" });
+  });
+
+  // POST /api/integrity/run — trigger a full integrity check (runs in-process, ~30s)
+  app.post("/api/integrity/run", async (_req, res) => {
+    try {
+      const report = await runIntegrityCheck();
+      res.json(report);
+    } catch (err: any) {
+      console.error("[integrity] Manual run failed:", err.message);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // GET /api/debug/airtable-fields/:recordId — temporary debug: dump raw Airtable field keys + attachment filenames

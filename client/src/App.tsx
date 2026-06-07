@@ -31,6 +31,8 @@ import YCDashboard from "./pages/YCDashboard";
 import InvestorRegister from "./pages/InvestorRegister";
 import PortfolioSummary from "./pages/PortfolioSummary";
 
+import DataIntegrity from "./pages/DataIntegrity";
+
 // Cayman pages
 import CaymanDashboard from "./pages/CaymanDashboard";
 import CaymanFundOverview from "./pages/CaymanFundOverview";
@@ -68,6 +70,7 @@ export default function App() {
             <Route path="/pl-model"          component={PLModel} />
             <Route path="/tax-accounts"      component={TaxAccounts} />
             <Route path="/accounts-payable"  component={AccountsPayable} />
+            <Route path="/data-integrity"    component={DataIntegrity} />
             <Route path="/group-structure"      component={GroupStructure} />
             <Route path="/reporting-calendar"   component={ReportingCalendar} />
             <Route path="/fc-investments"        component={FCInvestments} />

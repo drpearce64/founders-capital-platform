@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield,
   Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw,
   PieChart, FileSpreadsheet, BookOpen, FileCheck, Network, Globe, Landmark,
-  ChevronRight, CalendarDays, Rocket, BarChart2, BookUser, Briefcase,
+  ChevronRight, CalendarDays, Rocket, BarChart2, BookUser, Briefcase, ShieldCheck,
 } from "lucide-react";
 
 // ── Delaware nav ──────────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ const delawareNav = [
   { href: "/documents",          label: "Documents",              icon: FolderOpen,      section: "admin" },
   { href: "/audit-log",          label: "Audit Log",              icon: Shield,          section: "admin" },
   { href: "/settings",           label: "Users & Roles",          icon: UserCog,         section: "admin" },
+  { href: "/data-integrity",     label: "Data Integrity",         icon: ShieldCheck,     section: "admin" },
 ];
 
 const delawareSections: Record<string, string> = {
