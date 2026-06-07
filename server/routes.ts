@@ -2475,6 +2475,7 @@ Founders Capital`;
         "CompanyName", "Deal Code", "Status", "Holding Status",
         "Stage", "Closing Date", "Quarter closed", "Month Closed",
         "Investment Currency", "FC investment amount",
+        "FC Investment Deal Currency (from Investments 2)",
         "FC Investment USD Conversion", "FC Investment PV USD",
         "USD INVESTMENT VALUE", "MOIC",
         "investors per deal", "Pre-money valuation",
@@ -2564,7 +2565,16 @@ Founders Capital`;
           closing_date: f["Closing Date"] ?? null,
           quarter_closed: f["Quarter closed"] ?? "",
           investment_currency: f["Investment Currency"] ?? "USD",
-          fc_investment_amount_raw: f["FC investment amount"] ?? null,
+          fc_investment_amount_raw: (() => {
+            // Prefer FC Investment Deal Currency (rollup from linked Investments 2 table)
+            // as it reflects the actual GBP/EUR amount paid. Fall back to FC investment amount.
+            const dealCcy = f["FC Investment Deal Currency (from Investments 2)"];
+            const dealVal = Array.isArray(dealCcy)
+              ? dealCcy.reduce((a: number, b: number) => a + b, 0)
+              : typeof dealCcy === "number" ? dealCcy : 0;
+            if (dealVal > 0) return dealVal;
+            return f["FC investment amount"] ?? null;
+          })(),
           fc_invested_usd: fcInvestedUsd,
           fc_pv_usd: fcPvUsd,
           deal_size_usd: f["USD INVESTMENT VALUE"] ?? 0,
