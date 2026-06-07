@@ -2564,6 +2564,7 @@ Founders Capital`;
           closing_date: f["Closing Date"] ?? null,
           quarter_closed: f["Quarter closed"] ?? "",
           investment_currency: f["Investment Currency"] ?? "USD",
+          fc_investment_amount_raw: f["FC investment amount"] ?? null,
           fc_invested_usd: fcInvestedUsd,
           fc_pv_usd: fcPvUsd,
           deal_size_usd: f["USD INVESTMENT VALUE"] ?? 0,

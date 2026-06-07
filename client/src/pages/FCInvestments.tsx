@@ -54,6 +54,7 @@ interface FCInvestment {
   closing_date: string | null;
   quarter_closed: string;
   investment_currency: string;
+  fc_investment_amount_raw: number | null;
   fc_invested_usd: number;
   fc_pv_usd: number;
   deal_size_usd: number;
@@ -88,6 +89,33 @@ const fmtUsd = (n: number) => {
 };
 
 const fmtMoic = (m: number) => `${m.toFixed(2)}x`;
+
+// Format a non-USD source currency amount with its symbol
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  GBP: "£",
+  EUR: "€",
+  CAD: "CA$",
+  AUD: "A$",
+  SGD: "S$",
+  CHF: "CHF",
+};
+
+const fmtSourceCurrency = (amount: number, currency: string): string => {
+  const sym = CURRENCY_SYMBOLS[currency] ?? currency + " ";
+  if (amount >= 1_000_000) return `${sym}${(amount / 1_000_000).toFixed(2)}M`;
+  if (amount >= 1_000) return `${sym}${(amount / 1_000).toFixed(1)}K`;
+  return `${sym}${fmt(amount, 0)}`;
+};
+
+// Small inline badge showing source currency amount when it differs from USD
+const SourceBadge = ({ amount, currency }: { amount: number | null; currency: string }) => {
+  if (!amount || currency === "USD") return null;
+  return (
+    <span className="ml-1 inline-block rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-mono text-amber-700 leading-none">
+      {fmtSourceCurrency(amount, currency)}
+    </span>
+  );
+};
 
 const stageBadge: Record<string, string> = {
   Seed:   "bg-blue-100 text-blue-800 border-blue-200",
@@ -257,7 +285,10 @@ function InvestmentCard({ inv }: { inv: FCInvestment }) {
         <div className="grid grid-cols-2 gap-3 mt-auto pt-3 border-t border-border/50">
           <div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">FC Invested</p>
-            <p className="text-sm font-mono font-semibold text-[#1A1209]">{fmtUsd(inv.fc_invested_usd)}</p>
+            <p className="text-sm font-mono font-semibold text-[#1A1209]">
+              {fmtUsd(inv.fc_invested_usd)}
+              <SourceBadge amount={inv.fc_investment_amount_raw} currency={inv.investment_currency} />
+            </p>
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Fair Value</p>
@@ -604,7 +635,14 @@ export default function FCInvestments() {
                             <span className="text-xs text-muted-foreground">{inv.deal_type || "—"}</span>
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
-                            {fmtUsd(inv.fc_invested_usd)}
+                            <div className="flex flex-col items-end gap-0.5">
+                              {fmtUsd(inv.fc_invested_usd)}
+                              {inv.investment_currency !== "USD" && inv.fc_investment_amount_raw ? (
+                                <span className="text-[10px] font-mono text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 leading-none">
+                                  {fmtSourceCurrency(inv.fc_investment_amount_raw, inv.investment_currency)}
+                                </span>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm font-semibold">
                             {fmtUsd(inv.fc_pv_usd)}
