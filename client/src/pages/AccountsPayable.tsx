@@ -6,40 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import {
-  FileCheck,
-  Plus,
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
-  DollarSign,
-  Filter,
-  RefreshCw,
-} from "lucide-react";
+import { FileCheck, Plus, CheckCircle2, Clock, AlertTriangle, DollarSign, Filter, TrendingDown } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Invoice {
@@ -121,6 +94,7 @@ function MarkPaidDialog({ invoice, onClose }: { invoice: Invoice; onClose: () =>
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/ap/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ap/aging"] });
       toast({ title: "Invoice marked as paid" });
       onClose();
     },
@@ -153,16 +127,10 @@ function MarkPaidDialog({ invoice, onClose }: { invoice: Invoice; onClose: () =>
 // ── Add Invoice Dialog ────────────────────────────────────────────────────────
 function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({
-    vendor: "",
-    description: "",
-    invoice_number: "",
+    vendor: "", description: "", invoice_number: "",
     invoice_date: new Date().toISOString().slice(0, 10),
-    due_date: "",
-    amount: "",
-    currency: "USD",
-    fx_rate_to_usd: "1.0",
-    series_tag: "PLATFORM",
-    notes: "",
+    due_date: "", amount: "", currency: "USD", fx_rate_to_usd: "1.0",
+    series_tag: "PLATFORM", notes: "",
   });
   const { toast } = useToast();
 
@@ -177,6 +145,7 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/ap/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ap/aging"] });
       toast({ title: "Invoice added" });
       onClose();
     },
@@ -184,7 +153,6 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
   });
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-
   const handleCurrencyChange = (v: string) => {
     setForm(f => ({ ...f, currency: v, fx_rate_to_usd: v === "USD" ? "1.0" : f.fx_rate_to_usd === "1.0" ? "" : f.fx_rate_to_usd }));
   };
@@ -227,17 +195,23 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
             </SelectContent>
           </Select>
         </div>
+        <div className="space-y-2">
+          <Label>Series / Entity</Label>
+          <Select value={form.series_tag} onValueChange={v => set("series_tag", v)}>
+            <SelectTrigger data-testid="select-series"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="PLATFORM">FC Platform</SelectItem>
+              <SelectItem value="VECTOR-I">Vector I</SelectItem>
+              <SelectItem value="VECTOR-III">Vector III</SelectItem>
+              <SelectItem value="VECTOR-IV">Vector IV</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         {form.currency !== "USD" && (
           <div className="space-y-2 col-span-2">
             <Label>FX Rate to USD <span className="text-muted-foreground text-xs">(1 {form.currency} = ? USD)</span></Label>
-            <Input
-              type="number"
-              step="0.0001"
-              placeholder="e.g. 1.27"
-              value={form.fx_rate_to_usd}
-              onChange={e => set("fx_rate_to_usd", e.target.value)}
-              data-testid="input-fx-rate"
-            />
+            <Input type="number" step="0.0001" placeholder="e.g. 1.27" value={form.fx_rate_to_usd}
+              onChange={e => set("fx_rate_to_usd", e.target.value)} data-testid="input-fx-rate" />
             {form.amount && form.fx_rate_to_usd && parseFloat(form.fx_rate_to_usd) > 0 && (
               <p className="text-xs text-muted-foreground">
                 USD equivalent: {fmt(parseFloat(form.amount) * parseFloat(form.fx_rate_to_usd))}
@@ -245,30 +219,13 @@ function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
             )}
           </div>
         )}
-        <div className="space-y-2">
-          <Label>Series / Entity</Label>
-          <Select value={form.series_tag} onValueChange={v => set("series_tag", v)}>
-            <SelectTrigger data-testid="select-series"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="PLATFORM">FC Platform</SelectItem>
-              <SelectItem value="VECTOR-I">Vector I (Shield AI)</SelectItem>
-              <SelectItem value="VECTOR-III">Vector III (Reach Power)</SelectItem>
-              <SelectItem value="VECTOR-IV">Vector IV (Project Prometheus)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         <div className="space-y-2 col-span-2">
           <Label>Notes</Label>
           <Input placeholder="Optional notes" value={form.notes} onChange={e => set("notes", e.target.value)} data-testid="input-notes" />
         </div>
       </div>
       <div className="flex gap-2 pt-2">
-        <Button
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !form.vendor || !form.amount}
-          className="flex-1"
-          data-testid="button-add-invoice"
-        >
+        <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.vendor || !form.amount} className="flex-1" data-testid="button-add-invoice">
           {mutation.isPending ? "Saving…" : "Add Invoice"}
         </Button>
         <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
@@ -284,21 +241,29 @@ export default function AccountsPayable() {
   const [search, setSearch] = useState("");
   const [markPaidInvoice, setMarkPaidInvoice] = useState<Invoice | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("invoices");
 
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery<Invoice[]>({
     queryKey: ["/api/invoices"],
+    queryFn: () => apiRequest("GET", "/api/invoices").then(r => r.json()),
   });
 
   const { data: summary = [], isLoading: loadingSummary } = useQuery<APSummary[]>({
     queryKey: ["/api/ap/summary"],
+    queryFn: () => apiRequest("GET", "/api/ap/summary").then(r => r.json()),
+  });
+
+  const { data: aging = [], isLoading: loadingAging } = useQuery<any[]>({
+    queryKey: ["/api/ap/aging"],
+    queryFn: () => apiRequest("GET", "/api/ap/aging").then(r => r.json()),
   });
 
   // KPI totals — use amount_usd so mixed-currency totals are always in USD
-  const totalUnpaid   = invoices.filter(i => i.status === "unpaid").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
-  const totalOverdue  = invoices.filter(i => i.status === "overdue").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
-  const totalPaid     = invoices.filter(i => i.status === "paid").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
-  const countUnpaid   = invoices.filter(i => i.status === "unpaid").length;
-  const countOverdue  = invoices.filter(i => i.status === "overdue").length;
+  const totalUnpaid  = invoices.filter(i => i.status === "unpaid").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
+  const totalOverdue = invoices.filter(i => i.status === "overdue").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
+  const totalPaid    = invoices.filter(i => i.status === "paid").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
+  const countUnpaid  = invoices.filter(i => i.status === "unpaid").length;
+  const countOverdue = invoices.filter(i => i.status === "overdue").length;
 
   // Filtered invoice list
   const filtered = invoices.filter(inv => {
@@ -306,11 +271,7 @@ export default function AccountsPayable() {
     if (filterSeries !== "all" && inv.series_tag !== filterSeries) return false;
     if (search) {
       const s = search.toLowerCase();
-      if (
-        !inv.vendor.toLowerCase().includes(s) &&
-        !(inv.description || "").toLowerCase().includes(s) &&
-        !(inv.invoice_number || "").toLowerCase().includes(s)
-      ) return false;
+      if (!inv.vendor.toLowerCase().includes(s) && !(inv.description || "").toLowerCase().includes(s) && !(inv.invoice_number || "").toLowerCase().includes(s)) return false;
     }
     return true;
   });
@@ -348,45 +309,31 @@ export default function AccountsPayable() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Unpaid</p>
-                {loadingInvoices ? (
-                  <Skeleton className="h-7 w-28 mt-1" />
-                ) : (
-                  <p className="text-2xl font-bold mt-1">{fmt(totalUnpaid)}</p>
-                )}
+                {loadingInvoices ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1">{fmt(totalUnpaid)}</p>}
                 <p className="text-xs text-muted-foreground mt-0.5">{countUnpaid} invoice{countUnpaid !== 1 ? "s" : ""}</p>
               </div>
               <Clock className="h-5 w-5 text-amber-500 mt-0.5" />
             </div>
           </CardContent>
         </Card>
-
         <Card data-testid="kpi-overdue">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Overdue</p>
-                {loadingInvoices ? (
-                  <Skeleton className="h-7 w-28 mt-1" />
-                ) : (
-                  <p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{fmt(totalOverdue)}</p>
-                )}
+                {loadingInvoices ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{fmt(totalOverdue)}</p>}
                 <p className="text-xs text-muted-foreground mt-0.5">{countOverdue} invoice{countOverdue !== 1 ? "s" : ""}</p>
               </div>
               <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
             </div>
           </CardContent>
         </Card>
-
         <Card data-testid="kpi-paid">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Paid (All Time)</p>
-                {loadingInvoices ? (
-                  <Skeleton className="h-7 w-28 mt-1" />
-                ) : (
-                  <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{fmt(totalPaid)}</p>
-                )}
+                {loadingInvoices ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{fmt(totalPaid)}</p>}
               </div>
               <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
             </div>
@@ -404,9 +351,7 @@ export default function AccountsPayable() {
         </CardHeader>
         <CardContent>
           {loadingSummary ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
-            </div>
+            <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
           ) : summary.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No data yet</p>
           ) : (
@@ -438,143 +383,217 @@ export default function AccountsPayable() {
         </CardContent>
       </Card>
 
-      {/* Invoice List */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Filter className="h-4 w-4 text-primary" />
-              All Invoices
-            </CardTitle>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Input
-                placeholder="Search vendor, description…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="h-8 w-48 text-sm"
-                data-testid="input-search"
-              />
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="h-8 w-32 text-sm" data-testid="select-filter-status">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="unpaid">Unpaid</SelectItem>
-                  <SelectItem value="overdue">Overdue</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={filterSeries} onValueChange={setFilterSeries}>
-                <SelectTrigger className="h-8 w-40 text-sm" data-testid="select-filter-series">
-                  <SelectValue placeholder="Series" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Series</SelectItem>
-                  <SelectItem value="PLATFORM">FC Platform</SelectItem>
-                  <SelectItem value="VECTOR-I">Vector I</SelectItem>
-                  <SelectItem value="VECTOR-III">Vector III</SelectItem>
-                  <SelectItem value="VECTOR-IV">Vector IV</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loadingInvoices ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <FileCheck className="h-10 w-10 mx-auto mb-3 opacity-20" />
-              <p className="text-sm">No invoices match your filters</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Series</TableHead>
-                  <TableHead className="text-right">Source</TableHead>
-                  <TableHead className="text-right">USD</TableHead>
-                  <TableHead>Invoice Date</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(inv => (
-                  <TableRow key={inv.id} data-testid={`invoice-row-${inv.id}`}>
-                    <TableCell className="font-medium text-sm">{inv.vendor}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground max-w-[220px] truncate">
-                      {inv.description || inv.gmail_subject || "—"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {seriesLabel(inv.series_tag)}
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {inv.currency !== "USD" ? (
-                        <span className="text-muted-foreground">
-                          {fmt(inv.amount, inv.currency)}
-                          <span className="block text-xs opacity-60">@ {(inv.fx_rate_to_usd ?? 1).toFixed(4)}</span>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-sm font-medium">
-                      {fmt(inv.amount_usd ?? inv.amount)}
-                    </TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">{fmtDate(inv.invoice_date)}</TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">
-                      <span className={inv.status === "overdue" ? "text-red-600 font-medium" : ""}>
-                        {fmtDate(inv.due_date)}
-                      </span>
-                    </TableCell>
-                    <TableCell>{statusBadge(inv.status)}</TableCell>
-                    <TableCell className="text-right">
-                      {(inv.status === "unpaid" || inv.status === "overdue" || inv.status === "draft") && (
-                        <Dialog
-                          open={markPaidInvoice?.id === inv.id}
-                          onOpenChange={open => setMarkPaidInvoice(open ? inv : null)}
-                        >
-                          <DialogTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-xs"
-                              data-testid={`button-mark-paid-${inv.id}`}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                              Mark Paid
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader><DialogTitle>Mark Invoice as Paid</DialogTitle></DialogHeader>
-                            <MarkPaidDialog invoice={inv} onClose={() => setMarkPaidInvoice(null)} />
-                          </DialogContent>
-                        </Dialog>
-                      )}
-                      {inv.status === "paid" && (
-                        <span className="text-xs text-green-600 flex items-center justify-end gap-1">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> {fmtDate(inv.paid_date)}
-                        </span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Invoice List + Aging Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+          <TabsTrigger value="invoices">Invoice List</TabsTrigger>
+          <TabsTrigger value="aging">AP Aging</TabsTrigger>
+        </TabsList>
 
-      {/* Mark Paid Dialog (standalone, outside table) */}
-      {/* Note: handled inline above per row */}
+        {/* ── Invoice List ─────────────────────────────────────────────── */}
+        <TabsContent value="invoices">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-primary" />
+                  All Invoices
+                </CardTitle>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Input placeholder="Search vendor, description…" value={search} onChange={e => setSearch(e.target.value)}
+                    className="h-8 w-48 text-sm" data-testid="input-search" />
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-8 w-32 text-sm" data-testid="select-filter-status">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="unpaid">Unpaid</SelectItem>
+                      <SelectItem value="overdue">Overdue</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="draft">Draft</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterSeries} onValueChange={setFilterSeries}>
+                    <SelectTrigger className="h-8 w-40 text-sm" data-testid="select-filter-series">
+                      <SelectValue placeholder="Series" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Series</SelectItem>
+                      <SelectItem value="PLATFORM">FC Platform</SelectItem>
+                      <SelectItem value="VECTOR-I">Vector I</SelectItem>
+                      <SelectItem value="VECTOR-III">Vector III</SelectItem>
+                      <SelectItem value="VECTOR-IV">Vector IV</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingInvoices ? (
+                <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <FileCheck className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">No invoices match your filters</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Series</TableHead>
+                      <TableHead className="text-right">Source</TableHead>
+                      <TableHead className="text-right">USD</TableHead>
+                      <TableHead>Invoice Date</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map(inv => (
+                      <TableRow key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+                        <TableCell className="font-medium text-sm">{inv.vendor}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[220px] truncate">
+                          {inv.description || inv.gmail_subject || "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {seriesLabel(inv.series_tag)}
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          {inv.currency !== "USD" ? (
+                            <span className="text-muted-foreground">
+                              {fmt(inv.amount, inv.currency)}
+                              <span className="block text-xs opacity-60">@ {(inv.fx_rate_to_usd ?? 1).toFixed(4)}</span>
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right text-sm font-medium">
+                          {fmt(inv.amount_usd ?? inv.amount)}
+                        </TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">{fmtDate(inv.invoice_date)}</TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">
+                          <span className={inv.status === "overdue" ? "text-red-600 font-medium" : ""}>
+                            {fmtDate(inv.due_date)}
+                          </span>
+                        </TableCell>
+                        <TableCell>{statusBadge(inv.status)}</TableCell>
+                        <TableCell className="text-right">
+                          {(inv.status === "unpaid" || inv.status === "overdue" || inv.status === "draft") && (
+                            <Dialog open={markPaidInvoice?.id === inv.id} onOpenChange={open => setMarkPaidInvoice(open ? inv : null)}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" data-testid={`button-mark-paid-${inv.id}`}>
+                                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Paid
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader><DialogTitle>Mark Invoice as Paid</DialogTitle></DialogHeader>
+                                <MarkPaidDialog invoice={inv} onClose={() => setMarkPaidInvoice(null)} />
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                          {inv.status === "paid" && (
+                            <span className="text-xs text-green-600 flex items-center justify-end gap-1">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> {fmtDate(inv.paid_date)}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── AP Aging ───────────────────────────────────────────────── */}
+        <TabsContent value="aging">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-primary" />
+                AP Aging Report
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingAging ? (
+                <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+              ) : aging.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground">
+                  <CheckCircle2 className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">No overdue invoices</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Series</TableHead>
+                      <TableHead className="text-right">Source Amount</TableHead>
+                      <TableHead className="text-right">USD</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead className="text-right">Days Overdue</TableHead>
+                      <TableHead>Bucket</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {aging.map((row: any, i: number) => {
+                      const days = Number(row.days_overdue ?? 0);
+                      const bucket = days <= 0 ? "Current"
+                        : days <= 30 ? "1–30 days"
+                        : days <= 60 ? "31–60 days"
+                        : days <= 90 ? "61–90 days" : "90+ days";
+                      const bucketColor = days <= 0
+                        ? { bg: "hsl(142 71% 42% / 0.12)", color: "hsl(142 71% 55%)" }
+                        : days <= 30 ? { bg: "hsl(38 92% 52% / 0.12)", color: "hsl(38 92% 60%)" }
+                        : days <= 60 ? { bg: "hsl(25 95% 55% / 0.12)", color: "hsl(25 95% 55%)" }
+                        : { bg: "hsl(0 72% 55% / 0.12)", color: "hsl(0 72% 60%)" };
+                      return (
+                        <TableRow key={row.id ?? i}>
+                          <TableCell className="font-medium text-sm">{row.vendor ?? "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{row.invoice_number ?? "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{seriesLabel(row.series_tag)}</TableCell>
+                          <TableCell className="text-right text-sm">
+                            {row.currency && row.currency !== "USD" ? fmt(row.amount ?? 0, row.currency) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-medium">
+                            {fmt(row.amount_usd ?? row.amount ?? 0)}
+                          </TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{fmtDate(row.due_date)}</TableCell>
+                          <TableCell className="text-right text-sm font-mono">
+                            {days > 0 ? <span className="text-red-600 font-medium">{days}</span> : <span className="text-green-600">0</span>}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                              style={{ background: bucketColor.bg, color: bucketColor.color }}>
+                              {bucket}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                  <tfoot className="border-t-2">
+                    <tr>
+                      <td colSpan={4} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground">Total Outstanding</td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold">
+                        {fmt(aging.reduce((s: number, r: any) => s + (r.amount_usd ?? r.amount ?? 0), 0))}
+                      </td>
+                      <td colSpan={3} />
+                    </tr>
+                  </tfoot>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

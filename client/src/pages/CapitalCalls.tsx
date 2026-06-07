@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { fmtUSD, fmtDate } from "@/lib/utils";
-import { Plus, X, ChevronDown, ChevronRight, CheckCircle2, Mail, DollarSign, AlertTriangle, Clock } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronRight, CheckCircle2, Mail, DollarSign, AlertTriangle, Clock, FileText, Send } from "lucide-react";
 
 const INPUT_CLASS = "w-full px-3 py-2 rounded-lg text-sm border outline-none transition-colors";
 const STYLE = { background: "hsl(var(--input))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" };
@@ -131,9 +131,7 @@ function ChaseModal({ callId, onClose }: { callId: string; onClose: () => void }
         style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
         <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0"
           style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-          <h2 className="text-base font-semibold" style={{ color: "hsl(var(--foreground))" }}>
-            Chase Overdue LPs
-          </h2>
+          <h2 className="text-base font-semibold" style={{ color: "hsl(var(--foreground))" }}>Chase Overdue LPs</h2>
           <button onClick={onClose}><X size={18} style={{ color: "hsl(var(--muted-foreground))" }} /></button>
         </div>
 
@@ -211,11 +209,174 @@ function ChaseModal({ callId, onClose }: { callId: string; onClose: () => void }
   );
 }
 
+// ── Notices Panel ─────────────────────────────────────────────────────────────
+function NoticesPanel({ call, onClose }: { call: any; onClose: () => void }) {
+  const { toast } = useToast();
+
+  const { data: notices = [], isLoading, refetch } = useQuery<any[]>({
+    queryKey: ["/api/capital-calls", call.id, "notices"],
+    queryFn: () => apiRequest("GET", `/api/capital-calls/${call.id}/notices`).then(r => r.json()),
+  });
+
+  const genMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/capital-calls/${call.id}/generate-notices`, {}).then(r => r.json()),
+    onSuccess: (data) => {
+      refetch();
+      toast({ title: `${Array.isArray(data) ? data.length : 0} notices generated` });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const downloadNotice = (notice: any) => {
+    const callNum = call.call_number;
+    const spv = call.entities?.short_code ?? "";
+    const company = call.entities?.investments?.[0]?.company_name ?? "";
+    const lines = [
+      `CAPITAL CALL NOTICE`,
+      ``,
+      `Call #${callNum} — ${spv}${company ? ` · ${company}` : ""}`,
+      `Call Date:  ${fmtDate(call.call_date)}`,
+      `Due Date:   ${fmtDate(call.due_date)}`,
+      `Purpose:    ${call.purpose ?? "—"}`,
+      ``,
+      `LP:         ${notice.investors?.full_name}`,
+      `Email:      ${notice.investors?.email ?? "—"}`,
+      ``,
+      `Capital Called:  ${fmtUSD(notice.call_amount)}`,
+      `Fee (6%):        ${fmtUSD(notice.fee_amount ?? 0)}`,
+      `Total Due:       ${fmtUSD(Number(notice.call_amount) + Number(notice.fee_amount ?? 0))}`,
+      ``,
+      `Wire Instructions:`,
+      `  Bank:    ${call.bank_name ?? "HSBC Bank USA NA"}`,
+      `  Account: ${call.entities?.bank_account_name ?? "—"}`,
+      `  Acc No:  ${call.entities?.bank_account_no ?? "—"}`,
+      `  Routing: ${call.entities?.bank_routing_no ?? "—"}`,
+      `  SWIFT:   ${call.entities?.bank_swift ?? "MRMDUS33"}`,
+      ``,
+      `Reference: ${call.reference_note ?? `CC-${String(callNum).padStart(3, "0")}-${notice.investors?.full_name?.split(" ").pop()?.toUpperCase()}`}`,
+      ``,
+      `Notice Date: ${fmtDate(notice.notice_date)}`,
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `CC${callNum}_Notice_${(notice.investors?.full_name ?? "LP").replace(/\s+/g, "_")}.txt`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  const downloadAll = () => {
+    notices.forEach(n => downloadNotice(n));
+    toast({ title: `${notices.length} notice files downloaded` });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
+      <div className="w-full max-w-2xl rounded-2xl border shadow-2xl overflow-auto max-h-[85vh]"
+        style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0"
+          style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+          <div>
+            <h2 className="text-base font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+              LP Call Notices — Call #{call.call_number}
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
+              {call.entities?.short_code} · {call.entities?.investments?.[0]?.company_name}
+            </p>
+          </div>
+          <button onClick={onClose}><X size={18} style={{ color: "hsl(var(--muted-foreground))" }} /></button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => genMutation.mutate()}
+              disabled={genMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border"
+              style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+              <Send size={13} />
+              {genMutation.isPending ? "Generating…" : "Generate / Refresh Notices"}
+            </button>
+            {notices.length > 0 && (
+              <button
+                onClick={downloadAll}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
+                style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
+                <FileText size={13} /> Download All ({notices.length})
+              </button>
+            )}
+          </div>
+
+          {isLoading ? (
+            <div className="text-sm py-6 text-center" style={{ color: "hsl(var(--muted-foreground))" }}>Loading…</div>
+          ) : notices.length === 0 ? (
+            <div className="py-10 text-center">
+              <FileText size={32} className="mx-auto mb-3 opacity-20" style={{ color: "hsl(var(--muted-foreground))" }} />
+              <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+                No notices yet. Click "Generate / Refresh Notices" to create one per LP.
+              </p>
+              <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+                LP items must be generated first using "Generate LP Items" on the call.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: "hsl(var(--muted))" }}>
+                    {["LP", "Capital", "Fee", "Total Due", "Notice Date", ""].map(h => (
+                      <th key={h} className="text-left px-4 py-2.5 text-xs font-medium uppercase tracking-wider"
+                        style={{ color: "hsl(var(--muted-foreground))" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {notices.map((n: any, i: number) => (
+                    <tr key={n.id} style={{ borderTop: "1px solid hsl(var(--border))", background: i % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted))" }}>
+                      <td className="px-4 py-2.5 font-medium" style={{ color: "hsl(var(--foreground))" }}>
+                        {n.investors?.full_name ?? "—"}
+                        <div className="text-xs opacity-60">{n.investors?.email}</div>
+                      </td>
+                      <td className="px-4 py-2.5 mono text-right" style={{ color: "hsl(var(--foreground))" }}>
+                        {fmtUSD(n.call_amount)}
+                      </td>
+                      <td className="px-4 py-2.5 mono text-right" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        {Number(n.fee_amount) > 0 ? fmtUSD(n.fee_amount) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 mono text-right font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+                        {fmtUSD(Number(n.call_amount) + Number(n.fee_amount ?? 0))}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        {fmtDate(n.notice_date)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => downloadNotice(n)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium"
+                          style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}>
+                          <FileText size={11} /> Download
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Call Row ──────────────────────────────────────────────────────────────────
 function CallRow({ call, spvs }: { call: any; spvs: any[] }) {
   const [open, setOpen] = useState(false);
   const [receiveItem, setReceiveItem] = useState<any>(null);
   const [showChase, setShowChase] = useState(false);
+  const [showNotices, setShowNotices] = useState(false);
   const { toast } = useToast();
 
   const { data: items = [], isLoading: itemsLoading } = useQuery<any[]>({
@@ -250,6 +411,7 @@ function CallRow({ call, spvs }: { call: any; spvs: any[] }) {
     <>
       {receiveItem && <ReceiveModal item={receiveItem} callDueDate={call.due_date} onClose={() => setReceiveItem(null)} />}
       {showChase && <ChaseModal callId={call.id} onClose={() => setShowChase(false)} />}
+      {showNotices && <NoticesPanel call={call} onClose={() => setShowNotices(false)} />}
 
       <div className="rounded-xl border overflow-hidden" style={{ borderColor: "hsl(var(--border))" }}>
         {/* Header */}
@@ -280,12 +442,9 @@ function CallRow({ call, spvs }: { call: any; spvs: any[] }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {/* Funding progress */}
             {items.length > 0 && (
               <div className="text-right hidden sm:block">
-                <div className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                  Received
-                </div>
+                <div className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Received</div>
                 <div className="text-sm font-semibold mono" style={{ color: "hsl(142 71% 55%)" }}>
                   {fmtUSD(totalFunded)} / {fmtUSD(totalCalled)}
                 </div>
@@ -299,7 +458,6 @@ function CallRow({ call, spvs }: { call: any; spvs: any[] }) {
                 {fmtDate(call.call_date)}
               </div>
             </div>
-            {/* Action buttons */}
             <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
               {call.status === "draft" && (
                 <>
@@ -320,6 +478,15 @@ function CallRow({ call, spvs }: { call: any; spvs: any[] }) {
                     Issue
                   </button>
                 </>
+              )}
+              {/* Notices button — show once issued */}
+              {call.status !== "draft" && call.status !== "cancelled" && (
+                <button
+                  onClick={() => setShowNotices(true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 border"
+                  style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+                  <FileText size={12} /> Notices
+                </button>
               )}
               {(call.status === "issued" || call.status === "partially_funded") && overdueCount > 0 && (
                 <button
@@ -344,7 +511,6 @@ function CallRow({ call, spvs }: { call: any; spvs: any[] }) {
               </div>
             ) : (
               <>
-                {/* Summary bar */}
                 {totalFees > 0 && (
                   <div className="flex items-center gap-6 px-5 py-2.5 text-xs border-b"
                     style={{ background: "hsl(var(--muted))", borderColor: "hsl(var(--border))" }}>
@@ -379,7 +545,7 @@ function CallRow({ call, spvs }: { call: any; spvs: any[] }) {
                       const ageStyle = ageBucket ? (AGE_COLORS[ageBucket] ?? {}) : {};
 
                       return (
-                        <tr key={item.id} data-testid={`lp-item-${item.id}`}
+                        <tr key={item.id}
                           style={{ borderTop: "1px solid hsl(var(--border))", background: i % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted))" }}>
                           <td className="px-4 py-2.5 font-medium" style={{ color: "hsl(var(--foreground))" }}>
                             {item.investors?.full_name ?? "—"}
@@ -426,7 +592,6 @@ function CallRow({ call, spvs }: { call: any; spvs: any[] }) {
                           <td className="px-4 py-2.5">
                             {item.status !== "funded" && (
                               <button
-                                data-testid={`button-receive-${item.id}`}
                                 onClick={() => setReceiveItem(item)}
                                 className="px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1"
                                 style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}>
@@ -492,12 +657,20 @@ export default function CapitalCalls() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  // Summary KPIs
+  const totalCalls = calls.length;
+  const issuedCalls = calls.filter((c: any) => c.status === "issued" || c.status === "partially_funded").length;
+  const fullyFunded = calls.filter((c: any) => c.status === "fully_funded").length;
+  const totalCapital = calls.reduce((s: number, c: any) => s + Number(c.total_call_amount || 0), 0);
+
   return (
     <div className="p-8 max-w-5xl">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "hsl(var(--foreground))" }}>Capital Calls</h1>
-          <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>{calls.length} call{calls.length !== 1 ? "s" : ""}</p>
+          <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+            {totalCalls} call{totalCalls !== 1 ? "s" : ""} · {issuedCalls} active · {fullyFunded} settled
+          </p>
         </div>
         <button
           data-testid="button-new-call"
@@ -507,6 +680,22 @@ export default function CapitalCalls() {
           <Plus size={15} /> New Call
         </button>
       </div>
+
+      {/* KPI summary */}
+      {calls.length > 0 && (
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          {[
+            { label: "Total Capital Called", value: fmtUSD(totalCapital), color: "hsl(var(--primary))" },
+            { label: "Active Calls", value: String(issuedCalls), color: "hsl(38 92% 60%)" },
+            { label: "Fully Settled", value: String(fullyFunded), color: "hsl(142 71% 55%)" },
+          ].map(k => (
+            <div key={k.label} className="rounded-xl border p-4" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+              <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>{k.label}</div>
+              <div className="text-xl font-semibold mono" style={{ color: k.color }}>{k.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Form modal */}
       {showForm && (
@@ -591,9 +780,7 @@ export default function CapitalCalls() {
               <div className="col-span-2 flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)}
                   className="px-4 py-2 rounded-lg text-sm border"
-                  style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-                  Cancel
-                </button>
+                  style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>Cancel</button>
                 <button type="submit" disabled={mutation.isPending}
                   data-testid="button-submit-call"
                   className="px-5 py-2 rounded-lg text-sm font-medium"

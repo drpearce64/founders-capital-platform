@@ -9,32 +9,55 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, FileCheck, DollarSign } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, FileCheck, DollarSign, Clock, CheckCircle2, AlertTriangle, TrendingDown, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CURRENCIES = ["USD", "GBP", "EUR", "KYD"];
-const STATUS_COLORS: Record<string, string> = {
-  accrued: "#F59F00",
-  paid:    "#0CA678",
-  void:    "#868E96",
-};
 
 const CAYMAN_ENTITIES = [
   { value: "14d76562-2219-4121-b0bd-5379018ac3b4", label: "Founders Capital Strat. Opps. Fund I LP" },
   { value: "3540df09-f8bb-43ca-a4de-b89945b6b16b", label: "FC Strat. Opps. Fund I GP Limited" },
 ];
+const CAYMAN_ENTITY_IDS = CAYMAN_ENTITIES.map(e => e.value);
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = (n: number, currency = "USD") =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
+
+const fmtDate = (d?: string) =>
+  d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+function statusBadge(status: string) {
+  const map: Record<string, { label: string; cls: string }> = {
+    accrued: { label: "Accrued",  cls: "bg-amber-100 text-amber-800" },
+    paid:    { label: "Paid",     cls: "bg-green-100 text-green-800" },
+    void:    { label: "Void",     cls: "bg-gray-100 text-gray-400" },
+  };
+  const s = map[status] ?? map.accrued;
+  return <Badge className={`${s.cls} border-0 font-medium text-xs`}>{s.label}</Badge>;
+}
+
+function entityLabel(id: string) {
+  return CAYMAN_ENTITIES.find(e => e.value === id)?.label ?? id;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function CaymanAccountsPayable() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("invoices");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState({
-    entity_id: "14d76562-2219-4121-b0bd-5379018ac3b4", vendor: "", description: "", invoice_date: new Date().toISOString().slice(0, 10),
+    entity_id: CAYMAN_ENTITIES[0].value,
+    vendor: "", description: "",
+    invoice_date: new Date().toISOString().slice(0, 10),
     due_date: "", amount: "", currency: "USD", fx_rate_to_usd: "1", status: "accrued",
   });
 
-  const CAYMAN_ENTITY_IDS = ["14d76562-2219-4121-b0bd-5379018ac3b4", "3540df09-f8bb-43ca-a4de-b89945b6b16b"];
-
-  const { data: rawCosts = [], isLoading } = useQuery({
+  const { data: rawCosts = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/entity-costs", "cayman"],
     queryFn: async () => {
       const [a, b] = await Promise.all([
@@ -44,13 +67,12 @@ export default function CaymanAccountsPayable() {
       return [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])];
     },
   });
-  const invoices = rawCosts;
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/entity-costs", {
       entity_id: data.entity_id,
       cost_date: data.invoice_date,
-      description: `${data.vendor} — ${data.description}`,
+      description: data.description ? `${data.vendor} — ${data.description}` : data.vendor,
       category: "other",
       amount: parseFloat(data.amount),
       currency: data.currency,
@@ -60,7 +82,7 @@ export default function CaymanAccountsPayable() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entity-costs", "cayman"] });
       setOpen(false);
-      setForm({ entity_id: "FC-CAYMAN-FUND", vendor: "", description: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "", amount: "", currency: "USD", fx_rate_to_usd: "1", status: "accrued" });
+      setForm({ entity_id: CAYMAN_ENTITIES[0].value, vendor: "", description: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "", amount: "", currency: "USD", fx_rate_to_usd: "1", status: "accrued" });
       toast({ title: "Invoice added" });
     },
     onError: () => toast({ title: "Error", description: "Failed to add invoice.", variant: "destructive" }),
@@ -70,128 +92,299 @@ export default function CaymanAccountsPayable() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       apiRequest("PATCH", `/api/entity-costs/${id}`, { status }).then(r => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/entity-costs", "cayman"] }),
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const totalUSD    = invoices.filter((i: any) => i.status !== "void").reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
-  const outstanding = invoices.filter((i: any) => i.status === "accrued").reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
+  // KPIs
+  const active = rawCosts.filter((i: any) => i.status !== "void");
+  const totalUSD    = active.reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
+  const outstanding = rawCosts.filter((i: any) => i.status === "accrued").reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
+  const paid        = rawCosts.filter((i: any) => i.status === "paid").reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
+  const overdueItems = rawCosts.filter((i: any) => {
+    if (i.status !== "accrued" || !i.cost_date) return false;
+    const dueDate = i.due_date ?? i.cost_date;
+    return new Date(dueDate) < new Date();
+  });
+  const overdueUSD = overdueItems.reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
+
+  // Filtered list
+  const filtered = rawCosts.filter((i: any) => {
+    if (filterStatus !== "all" && i.status !== filterStatus) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      const desc = (i.description ?? "").toLowerCase();
+      if (!desc.includes(s)) return false;
+    }
+    return true;
+  });
+
+  // Aging computation
+  const agingRows = rawCosts
+    .filter((i: any) => i.status === "accrued")
+    .map((i: any) => {
+      const dueDate = i.due_date ?? i.cost_date;
+      const days = dueDate ? Math.floor((Date.now() - new Date(dueDate).getTime()) / 86400000) : 0;
+      return { ...i, days_overdue: days };
+    })
+    .sort((a: any, b: any) => b.days_overdue - a.days_overdue);
 
   const isNonUSD = form.currency !== "USD";
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-2xl">🇰🇾</span>
-              <h1 className="text-xl font-semibold" style={{ color: "hsl(var(--foreground))" }}>
-                Accounts Payable
-              </h1>
-              <Badge variant="outline" className="text-xs">Cayman Islands</Badge>
-            </div>
-            <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Invoices and expenses for Cayman entities — reported in USD
-            </p>
-          </div>
-          <Button size="sm" onClick={() => setOpen(true)} data-testid="button-add-invoice">
-            <Plus size={14} className="mr-1.5" /> Add Invoice
-          </Button>
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <span className="text-2xl">🇰🇾</span>
+            <span>Accounts Payable</span>
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Founders Capital Strat. Opps. Fund I · Cayman Islands
+          </p>
         </div>
+        <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)} data-testid="button-add-invoice-open">
+          <Plus className="h-4 w-4" /> Add Invoice
+        </Button>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        {[
-          { label: "Total Invoices", value: invoices.length.toString() },
-          { label: "Total (USD)",    value: `$${totalUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-          { label: "Outstanding",   value: `$${outstanding.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-        ].map(kpi => (
-          <Card key={kpi.label} className="border" style={{ borderColor: "hsl(var(--border))" }}>
-            <CardContent className="pt-4 pb-3 px-5">
-              <p className="text-xs font-medium mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>{kpi.label}</p>
-              <p className="text-lg font-semibold" style={{ color: "hsl(var(--foreground))" }}>{kpi.value}</p>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card data-testid="kpi-total">
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total (Active)</p>
+                {isLoading ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1">{fmt(totalUSD)}</p>}
+                <p className="text-xs text-muted-foreground mt-0.5">{active.length} invoice{active.length !== 1 ? "s" : ""}</p>
+              </div>
+              <DollarSign className="h-5 w-5 text-primary mt-0.5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="kpi-outstanding">
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Outstanding</p>
+                {isLoading ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1 text-amber-600">{fmt(outstanding)}</p>}
+                <p className="text-xs text-muted-foreground mt-0.5">Accrued / unpaid</p>
+              </div>
+              <Clock className="h-5 w-5 text-amber-500 mt-0.5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="kpi-overdue">
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Overdue</p>
+                {isLoading ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1 text-red-600">{fmt(overdueUSD)}</p>}
+                <p className="text-xs text-muted-foreground mt-0.5">{overdueItems.length} past due date</p>
+              </div>
+              <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="kpi-paid">
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Paid (All Time)</p>
+                {isLoading ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1 text-green-600">{fmt(paid)}</p>}
+              </div>
+              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tabs: Invoices / Aging */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+          <TabsTrigger value="invoices">Invoice List</TabsTrigger>
+          <TabsTrigger value="aging">AP Aging</TabsTrigger>
+        </TabsList>
+
+        {/* ── Invoice List ──────────────────────────────────────────────── */}
+        <TabsContent value="invoices">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-primary" />
+                  All Invoices
+                </CardTitle>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Input
+                    placeholder="Search description…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="h-8 w-48 text-sm"
+                    data-testid="input-search"
+                  />
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-8 w-32 text-sm" data-testid="select-filter-status">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="accrued">Accrued</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="void">Void</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <FileCheck className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">No invoices match your filters</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Entity</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Source</TableHead>
+                      <TableHead className="text-right">USD</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((inv: any) => {
+                      const amtUSD = parseFloat(inv.amount_usd) || parseFloat(inv.amount) || 0;
+                      return (
+                        <TableRow key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+                          <TableCell className="text-sm max-w-[260px] truncate">{inv.description ?? "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {inv.entities?.short_code ?? entityLabel(inv.entity_id)}
+                          </TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{fmtDate(inv.cost_date)}</TableCell>
+                          <TableCell className="text-right text-sm">
+                            {inv.currency !== "USD" ? fmt(parseFloat(inv.amount), inv.currency) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-medium">{fmt(amtUSD)}</TableCell>
+                          <TableCell>{statusBadge(inv.status)}</TableCell>
+                          <TableCell className="text-right">
+                            {inv.status === "accrued" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                data-testid={`button-mark-paid-${inv.id}`}
+                                onClick={() => patchMutation.mutate({ id: inv.id, status: "paid" })}
+                                disabled={patchMutation.isPending}>
+                                <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Paid
+                              </Button>
+                            )}
+                            {inv.status === "paid" && (
+                              <span className="text-xs text-green-600 flex items-center justify-end gap-1">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Paid
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
-        ))}
-      </div>
+        </TabsContent>
 
-      {/* Table */}
-      <Card className="border" style={{ borderColor: "hsl(var(--border))" }}>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-8 text-center text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Loading…</div>
-          ) : invoices.length === 0 ? (
-            <div className="p-12 text-center">
-              <FileCheck size={28} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>No invoices yet</p>
-              <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Add the first Cayman expense or invoice</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Entity</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Source</TableHead>
-                  <TableHead className="text-right">USD</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((inv: any) => {
-                  const entityLabel = CAYMAN_ENTITIES.find(e => e.value === inv.entity_id)?.label
-                    ?.replace("Founders Capital Strat. Opps. Fund I LP", "Cayman Fund LP")
-                    ?.replace("FC Strat. Opps. Fund I GP Limited", "GP Ltd") ?? inv.entity_id;
-                  return (
-                  <TableRow key={inv.id}>
-                    <TableCell className="text-xs">{entityLabel}</TableCell>
-                    <TableCell className="text-sm font-medium">{inv.description}</TableCell>
-                    <TableCell className="text-sm">{inv.category}</TableCell>
-                    <TableCell className="text-sm">{inv.cost_date}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {inv.currency !== "USD" ? (
-                        <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                          {parseFloat(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} {inv.currency}
-                        </span>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      ${parseFloat(inv.amount_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={inv.status}
-                        onValueChange={v => patchMutation.mutate({ id: inv.id, status: v })}
-                      >
-                        <SelectTrigger
-                          className="h-7 text-xs w-28"
-                          style={{
-                            borderColor: STATUS_COLORS[inv.status] ?? "#868E96",
-                            color:       STATUS_COLORS[inv.status] ?? "#868E96",
-                          }}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="accrued">Accrued</SelectItem>
-                          <SelectItem value="paid">Paid</SelectItem>
-                          <SelectItem value="void">Void</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                  </TableRow>
-                  );
-                })}
-                
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+        {/* ── AP Aging ───────────────────────────────────────────────────── */}
+        <TabsContent value="aging">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-primary" />
+                AP Aging Report — Accrued Items
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+              ) : agingRows.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground">
+                  <CheckCircle2 className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">No outstanding items</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Entity</TableHead>
+                      <TableHead className="text-right">USD</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Days Overdue</TableHead>
+                      <TableHead>Bucket</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agingRows.map((row: any) => {
+                      const days = row.days_overdue;
+                      const bucket = days <= 0 ? "Current"
+                        : days <= 30 ? "1–30 days"
+                        : days <= 60 ? "31–60 days"
+                        : days <= 90 ? "61–90 days" : "90+ days";
+                      const bucketColor = days <= 0
+                        ? { bg: "hsl(142 71% 42% / 0.12)", color: "hsl(142 71% 55%)" }
+                        : days <= 30 ? { bg: "hsl(38 92% 52% / 0.12)", color: "hsl(38 92% 60%)" }
+                        : days <= 60 ? { bg: "hsl(25 95% 55% / 0.12)", color: "hsl(25 95% 55%)" }
+                        : { bg: "hsl(0 72% 55% / 0.12)", color: "hsl(0 72% 60%)" };
+                      return (
+                        <TableRow key={row.id}>
+                          <TableCell className="text-sm max-w-[260px] truncate">{row.description ?? "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {row.entities?.short_code ?? entityLabel(row.entity_id)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-medium">
+                            {fmt(parseFloat(row.amount_usd) || parseFloat(row.amount) || 0)}
+                          </TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{fmtDate(row.cost_date)}</TableCell>
+                          <TableCell className="text-right text-sm font-mono">
+                            {days > 0 ? <span className="text-red-600 font-medium">{days}</span> : <span className="text-green-600">0</span>}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                              style={{ background: bucketColor.bg, color: bucketColor.color }}>
+                              {bucket}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                  <tfoot className="border-t-2">
+                    <tr>
+                      <td colSpan={2} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground">Total Outstanding</td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold">
+                        {fmt(agingRows.reduce((s: number, r: any) => s + (parseFloat(r.amount_usd) || parseFloat(r.amount) || 0), 0))}
+                      </td>
+                      <td colSpan={3} />
+                    </tr>
+                  </tfoot>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-      {/* Dialog */}
+      {/* Add Invoice Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -210,17 +403,21 @@ export default function CaymanAccountsPayable() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>Vendor</Label>
-                <Input data-testid="input-vendor" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} placeholder="Vendor name" />
+              <div className="col-span-2">
+                <Label>Vendor / Payee *</Label>
+                <Input data-testid="input-vendor" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} placeholder="e.g. Maples Group" />
+              </div>
+              <div className="col-span-2">
+                <Label>Description</Label>
+                <Input data-testid="input-description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Service description" />
               </div>
               <div>
                 <Label>Invoice Date</Label>
                 <Input data-testid="input-invoice-date" type="date" value={form.invoice_date} onChange={e => setForm(f => ({ ...f, invoice_date: e.target.value }))} />
               </div>
-              <div className="col-span-2">
-                <Label>Description</Label>
-                <Input data-testid="input-description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Service description" />
+              <div>
+                <Label>Due Date</Label>
+                <Input data-testid="input-due-date" type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
               </div>
               <div>
                 <Label>Currency</Label>
@@ -232,7 +429,7 @@ export default function CaymanAccountsPayable() {
                 </Select>
               </div>
               <div>
-                <Label>Amount</Label>
+                <Label>Amount *</Label>
                 <Input data-testid="input-amount" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
               </div>
               {isNonUSD && (
@@ -240,7 +437,7 @@ export default function CaymanAccountsPayable() {
                   <Label>FX Rate to USD ({form.currency} → USD)</Label>
                   <Input data-testid="input-fx-rate" type="number" step="0.0001" value={form.fx_rate_to_usd} onChange={e => setForm(f => ({ ...f, fx_rate_to_usd: e.target.value }))} placeholder="e.g. 1.27" />
                   {form.amount && form.fx_rate_to_usd && (
-                    <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    <p className="text-xs mt-1 text-muted-foreground">
                       ≈ ${(parseFloat(form.amount) * parseFloat(form.fx_rate_to_usd)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                     </p>
                   )}
@@ -264,12 +461,7 @@ export default function CaymanAccountsPayable() {
             <Button
               data-testid="button-submit-invoice"
               disabled={!form.vendor || !form.amount || createMutation.isPending}
-              onClick={() => createMutation.mutate({
-                ...form,
-                amount:         parseFloat(form.amount),
-                fx_rate_to_usd: parseFloat(form.fx_rate_to_usd),
-              })}
-            >
+              onClick={() => createMutation.mutate({ ...form, amount: parseFloat(form.amount), fx_rate_to_usd: parseFloat(form.fx_rate_to_usd) })}>
               {createMutation.isPending ? "Saving…" : "Add Invoice"}
             </Button>
           </DialogFooter>
