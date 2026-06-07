@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Wand2 } from "lucide-react";
 
 interface Investment {
   company_name: string; deal_code: string; status: string;
@@ -40,6 +41,7 @@ function Field({ label, name, type = "text", value, onChange, placeholder, requi
 
 export default function SPVs() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "", short_code: "", jurisdiction: "Delaware, USA",
@@ -83,14 +85,24 @@ export default function SPVs() {
           <h1 className="text-xl font-semibold" style={{ color: "hsl(var(--foreground))" }}>Series SPVs</h1>
           <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>{spvs.length} active series</p>
         </div>
-        <button
-          data-testid="button-add-spv"
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
-        >
-          <Plus size={15} /> Add SPV
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            data-testid="button-new-vector"
+            onClick={() => navigate("/vector/new")}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors"
+            style={{ borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+          >
+            <Wand2 size={15} /> New Vector Series
+          </button>
+          <button
+            data-testid="button-add-spv"
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
+          >
+            <Plus size={15} /> Add SPV
+          </button>
+        </div>
       </div>
 
       {/* Form modal */}

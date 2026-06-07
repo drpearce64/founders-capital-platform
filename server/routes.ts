@@ -1461,6 +1461,327 @@ Founders Capital`;
     }
   });
 
+  // ── Vector Series Wizard ────────────────────────────────────────────────────
+
+  // Helper: build VECTOR_DEAL_MAP dynamically from Supabase entities
+  // Returns { [airtable_deal_id]: { entityId, dealCode, shortCode } }
+  async function buildVectorDealMap() {
+    const { data: vectorEntities } = await supabase
+      .from("entities")
+      .select("id, short_code, airtable_deal_id")
+      .like("short_code", "FC-VECTOR-%")
+      .not("airtable_deal_id", "is", null);
+
+    // Also get the deal_code stored in the linked investments.notes field
+    const entityIds = (vectorEntities ?? []).map((e: any) => e.id);
+    const { data: investments } = entityIds.length
+      ? await supabase.from("investments").select("entity_id, notes").in("entity_id", entityIds)
+      : { data: [] };
+
+    const invMap: Record<string, string> = {};
+    for (const inv of investments ?? []) invMap[inv.entity_id] = inv.notes ?? "";
+
+    const map: Record<string, { entityId: string; dealCode: string; shortCode: string }> = {};
+    for (const e of vectorEntities ?? []) {
+      if (e.airtable_deal_id) {
+        map[e.airtable_deal_id] = {
+          entityId: e.id,
+          dealCode: invMap[e.id] ?? "",
+          shortCode: e.short_code,
+        };
+      }
+    }
+    return map;
+  }
+
+  // GET /api/vector/lookup?deal_code=CLY-0526-DEL — fetch deal from Airtable and suggest config
+  app.get("/api/vector/lookup", async (req, res) => {
+    const dealCode = String((req.query as any).deal_code ?? "").trim().toUpperCase();
+    if (!dealCode) return res.status(400).json({ error: "deal_code is required" });
+
+    const PAT = process.env.AIRTABLE_PAT;
+    if (!PAT) return res.status(500).json({ error: "AIRTABLE_PAT not configured" });
+
+    try {
+      // Search Airtable for the deal code
+      const url = new URL(`https://api.airtable.com/v0/appXSAE1n2PvdCQB1/tbln6AszmitsErPgh`);
+      url.searchParams.set("filterByFormula", `{Deal Code}='${dealCode}'`);
+      url.searchParams.set("maxRecords", "1");
+      [
+        "Deal Code", "CompanyName", "Closing Date", "Status", "Investment Currency",
+        "Total Received", "USD INVESTMENT VALUE", "Cap", "Carry", "Total Fee",
+        "Company Description", "URL",
+      ].forEach(f => url.searchParams.append("fields[]", f));
+
+      const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${PAT}` } });
+      if (!r.ok) return res.status(r.status).json({ error: `Airtable error: ${await r.text()}` });
+      const json: any = await r.json();
+      const records = json.records ?? [];
+      if (!records.length) return res.status(404).json({ error: `No deal found with code ${dealCode}` });
+
+      const rec = records[0];
+      const f = rec.fields;
+
+      // Determine next Vector number from existing FC-VECTOR-* entities
+      const { data: existing } = await supabase
+        .from("entities")
+        .select("short_code")
+        .like("short_code", "FC-VECTOR-%");
+
+      const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X"];
+      const usedNums = new Set(
+        (existing ?? []).map((e: any) => {
+          const m = e.short_code.match(/FC-VECTOR-(.+)/);
+          return m ? ROMAN.indexOf(m[1]) : -1;
+        }).filter((n: number) => n >= 0)
+      );
+      let nextIdx = 0;
+      while (usedNums.has(nextIdx)) nextIdx++;
+      const nextRoman = ROMAN[nextIdx] ?? `${nextIdx + 1}`;
+
+      return res.json({
+        airtable_record_id: rec.id,
+        deal_code: dealCode,
+        company_name: f["CompanyName"] ?? "",
+        closing_date: f["Closing Date"] ?? null,
+        status: f["Status"] ?? "",
+        currency: f["Investment Currency"] ?? "USD",
+        total_received: f["Total Received"] ?? null,
+        usd_investment_value: f["USD INVESTMENT VALUE"] ?? null,
+        cap: f["Cap"] ?? null,
+        carry_rate: f["Carry"] ?? 0.20,
+        management_fee_rate: f["Total Fee"] ?? 0.06,
+        description: f["Company Description"] ?? "",
+        url: f["URL"] ?? "",
+        // Suggested portal config
+        suggested_short_code: `FC-VECTOR-${nextRoman}`,
+        suggested_name: `FC Platform LP Vector ${nextRoman} Series`,
+        suggested_account_name: `FC Platform LP Vector ${nextRoman} Series`,
+        next_vector_roman: nextRoman,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/vector/provision — create/update the Vector entity, link to Airtable, optionally trigger SPA sync
+  app.post("/api/vector/provision", async (req, res) => {
+    const {
+      airtable_record_id,
+      deal_code,
+      short_code,       // e.g. FC-VECTOR-VI
+      name,             // e.g. FC Platform LP Vector VI Series
+      bank_name,
+      bank_account_name,
+      bank_account_no,
+      bank_swift,
+      hsbc_account_ref,
+      sync_spa,         // boolean — whether to immediately sync SPAs
+    } = req.body;
+
+    if (!airtable_record_id || !deal_code || !short_code || !name) {
+      return res.status(400).json({ error: "airtable_record_id, deal_code, short_code and name are required" });
+    }
+
+    const PAT = process.env.AIRTABLE_PAT;
+    if (!PAT) return res.status(500).json({ error: "AIRTABLE_PAT not configured" });
+
+    try {
+      // 1. Check if entity already exists (by airtable_deal_id or short_code)
+      const { data: existing } = await supabase
+        .from("entities")
+        .select("id, short_code, name")
+        .or(`airtable_deal_id.eq.${airtable_record_id},short_code.eq.${short_code}`)
+        .maybeSingle();
+
+      const masterEntity = await supabase
+        .from("entities")
+        .select("id")
+        .eq("entity_type", "master")
+        .maybeSingle();
+      const masterId = masterEntity.data?.id ?? null;
+
+      let entityId: string;
+
+      const entityRow = {
+        name,
+        short_code,
+        entity_type: "series_spv",
+        jurisdiction: "Delaware, USA",
+        status: "active",
+        airtable_deal_id: airtable_record_id,
+        base_currency: "USD",
+        fiscal_year_end: "12-31",
+        parent_entity_id: masterId,
+        bank_name:         bank_name         || "HSBC Bank USA NA",
+        bank_account_name: bank_account_name || name,
+        bank_account_no:   bank_account_no   || null,
+        bank_swift:        bank_swift        || "MRMDUS33",
+        hsbc_account_ref:  hsbc_account_ref  || bank_account_no || null,
+      };
+
+      if (existing) {
+        // Update existing entity — correct short_code, name, and bank details
+        const { error: updErr } = await supabase
+          .from("entities")
+          .update(entityRow)
+          .eq("id", existing.id);
+        if (updErr) throw new Error(`Entity update failed: ${updErr.message}`);
+        entityId = existing.id;
+      } else {
+        // Insert new entity
+        const { data: inserted, error: insErr } = await supabase
+          .from("entities")
+          .insert(entityRow)
+          .select("id")
+          .single();
+        if (insErr) throw new Error(`Entity insert failed: ${insErr.message}`);
+        entityId = inserted.id;
+      }
+
+      // 2. Ensure an investment record exists for this entity
+      const { data: existingInv } = await supabase
+        .from("investments")
+        .select("id")
+        .eq("entity_id", entityId)
+        .maybeSingle();
+
+      if (!existingInv) {
+        // Fetch deal details from Airtable for cost_basis
+        const atRes = await fetch(
+          `https://api.airtable.com/v0/appXSAE1n2PvdCQB1/tbln6AszmitsErPgh/${airtable_record_id}`,
+          { headers: { Authorization: `Bearer ${PAT}` } }
+        );
+        const atData: any = atRes.ok ? await atRes.json() : {};
+        const af = atData.fields ?? {};
+        const received = typeof af["Total Received"] === "number" ? af["Total Received"] : 0;
+        const companyName = af["CompanyName"] ?? name.replace("FC Platform LP Vector ", "").replace(" Series", "");
+
+        await supabase.from("investments").insert({
+          entity_id: entityId,
+          airtable_deal_id: airtable_record_id,
+          company_name: companyName,
+          investment_date: af["Closing Date"] ?? null,
+          cost_basis: received,
+          current_fair_value: received,
+          status: "active",
+          instrument_type: "other",
+          notes: deal_code,
+        });
+      } else {
+        // Update notes with deal_code so integrity check can join correctly
+        await supabase.from("investments").update({ notes: deal_code }).eq("id", existingInv.id);
+      }
+
+      // 3. Audit log
+      await supabase.from("audit_log").insert({
+        table_name: "entities",
+        record_id: entityId,
+        action: existing ? "update" : "create",
+        description: `Vector series wizard: ${existing ? "updated" : "provisioned"} ${short_code} (${deal_code})`,
+        actor: "wizard",
+        new_values: { short_code, name, deal_code, airtable_record_id },
+      }).catch(() => {});
+
+      // 4. Optionally trigger SPA sync for this specific entity
+      let spaResult: any = null;
+      if (sync_spa) {
+        const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
+        const DEALS_TABLE   = "tbln6AszmitsErPgh";
+        try {
+          await supabase.storage.createBucket("documents", { public: false }).catch(() => {});
+          const atRes = await fetch(
+            `https://api.airtable.com/v0/${AIRTABLE_BASE}/${DEALS_TABLE}/${airtable_record_id}`,
+            { headers: { Authorization: `Bearer ${PAT}` } }
+          );
+          if (atRes.ok) {
+            const record: any = await atRes.json();
+            const fields = record.fields ?? {};
+            let attachments: any[] = fields["Unredacted Fully Executed Investment Agreement"] || [];
+            if (!attachments.length) {
+              const invAgree: any[] = fields["Investment agreement"] || [];
+              attachments = invAgree.filter((a: any) =>
+                /stock.?purchase|\bspa\b|series.?agree/i.test(a.filename || "")
+              );
+            }
+            if (attachments.length) {
+              const att = attachments.find((a: any) => a.type === "application/pdf") || attachments[0];
+              const fileRes = await fetch(att.url);
+              if (fileRes.ok) {
+                const fileBuffer = Buffer.from(await fileRes.arrayBuffer());
+                const storagePath = `${entityId}/spa-${Date.now()}-${att.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+                const { error: uploadErr } = await supabase.storage
+                  .from("documents")
+                  .upload(storagePath, fileBuffer, { contentType: "application/pdf", upsert: true });
+                if (!uploadErr) {
+                  await supabase.from("documents").insert({
+                    entity_id: entityId,
+                    document_type: "stock_purchase_agreement",
+                    name: att.filename,
+                    storage_path: storagePath,
+                    file_size_bytes: fileBuffer.length,
+                    is_lp_visible: false,
+                  });
+                  spaResult = { status: "synced", filename: att.filename };
+                } else {
+                  spaResult = { status: "upload_failed", error: uploadErr.message };
+                }
+              } else {
+                spaResult = { status: "download_failed" };
+              }
+            } else {
+              spaResult = { status: "no_spa_found" };
+            }
+          }
+        } catch (spaErr: any) {
+          spaResult = { status: "error", error: spaErr.message };
+        }
+      }
+
+      return res.json({
+        success: true,
+        entity_id: entityId,
+        short_code,
+        name,
+        action: existing ? "updated" : "created",
+        spa: spaResult,
+        next_steps: [
+          existing ? null : "Run Airtable sync to populate financial fields (or wait for tonight's nightly sync)",
+          !bank_account_no ? "Add bank account number once received from HSBC" : null,
+          sync_spa && spaResult?.status === "no_spa_found" ? "No SPA found in Airtable yet — sync again once uploaded" : null,
+        ].filter(Boolean),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/vector/series — list all existing Vector series with their status
+  app.get("/api/vector/series", async (_req, res) => {
+    const { data: entities, error } = await supabase
+      .from("entities")
+      .select("id, name, short_code, status, airtable_deal_id, bank_name, bank_account_no, bank_swift, formation_date, vehicle_subscription_amount, gross_allocated_amount, funds_received, final_investment_usd")
+      .like("short_code", "FC-VECTOR-%")
+      .order("short_code");
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Enrich with investment company name
+    const ids = (entities ?? []).map((e: any) => e.id);
+    const { data: invs } = ids.length
+      ? await supabase.from("investments").select("entity_id, company_name, notes").in("entity_id", ids)
+      : { data: [] };
+    const invMap: Record<string, any> = {};
+    for (const inv of invs ?? []) invMap[inv.entity_id] = inv;
+
+    const result = (entities ?? []).map((e: any) => ({
+      ...e,
+      investment_company: invMap[e.id]?.company_name ?? null,
+      deal_code: invMap[e.id]?.notes ?? null,
+    }));
+
+    res.json(result);
+  });
+
   // GET /api/debug/airtable-fields/:recordId — temporary debug: dump raw Airtable field keys + attachment filenames
   app.get("/api/debug/airtable-fields/:recordId", async (req, res) => {
     const PAT = process.env.AIRTABLE_PAT!;
@@ -1487,14 +1808,8 @@ Founders Capital`;
     const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
     const DEALS_TABLE   = "tbln6AszmitsErPgh";
 
-    // Vector SPV entity_id → Airtable deal record id (discovered via deal code suffix -DEL)
-    const VECTOR_DEAL_MAP: Record<string, { entityId: string; dealCode: string }> = {
-      "rec4VkF6Q3NCxsOUf": { entityId: "4b9c14d2-f183-40e4-9268-cde01b565455", dealCode: "RPW-0326-DEL"  }, // Vector III — Reach Power
-      "reccKzQNQriTfUvRT": { entityId: "c677bafd-be0b-4ddd-911f-a14746165f77", dealCode: "PMS-0426-DEL"  }, // Vector IV  — Project Prometheus
-      "recQvnCEPwVwRwmzd": { entityId: "9f05cfb3-8f46-4175-92b2-c31afac38550", dealCode: "PSQ-0526-DEL"  }, // Vector II  — PsiQuantum
-      "recNXibyGVygKmzdG": { entityId: "2184a8e9-30fd-4b45-b415-908571bbeae3", dealCode: "ERB-0426-DEL"  }, // Vector V   — Erebor
-      "recZF9TDsGenvFqwt": { entityId: "a1000000-0000-0000-0000-000000000006", dealCode: "CLY-0526-DEL"  }, // Vector I   — Clay
-    };
+    // Vector SPV entity_id → Airtable deal record id — loaded dynamically from Supabase
+    const VECTOR_DEAL_MAP = await buildVectorDealMap();
 
     const results: any[] = [];
     let synced = 0, skipped = 0;
