@@ -3390,53 +3390,88 @@ Founders Capital`;
   });
 
   // GET /api/yc-deals/:dealName/lp-breakdown — LP breakdown for a single YC deal
+  // Uses investor_commitments (real per-LP amounts) via entities.name match
   app.get("/api/yc-deals/:dealName/lp-breakdown", async (req, res) => {
     try {
       const dealName = decodeURIComponent(req.params.dealName);
 
-      // Step 1: fetch holdings for this deal (include investor_airtable_id for name lookup)
-      const { data: holdings, error: hErr } = await supabase
-        .from("yc_holdings")
-        .select("investor_id, investor_airtable_id, investment_amount_usd, currency, moic")
-        .eq("deal_name", dealName);
-      if (hErr) return res.status(500).json({ error: hErr.message });
+      // Step 1: find the entity for this deal by name pattern
+      // Strip batch suffix for a broader name match e.g. "Pocket (YC W26)" → "Pocket"
+      const shortName = dealName.replace(/\s*\(YC [A-Z0-9]+\)\s*/g, "").trim();
+      const { data: entities, error: eErr } = await supabase
+        .from("entities")
+        .select("id, name")
+        .ilike("name", `%${shortName}%`);
+      if (eErr) return res.status(500).json({ error: eErr.message });
 
-      // Deduplicate by investor_airtable_id (the reliable unique key)
-      const seen = new Set<string>();
-      const deduped = (holdings ?? []).filter((h: any) => {
-        const key = h.investor_airtable_id || h.investor_id;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      const entity = (entities ?? []).find((e: any) =>
+        e.name.toLowerCase().includes("spv") || e.name.toLowerCase().includes("yc")
+      ) ?? (entities ?? [])[0];
 
-      // Step 2: fetch investor names via airtable_id
-      const airtableIds = deduped.map((h: any) => h.investor_airtable_id).filter(Boolean);
+      // Step 2: fetch commitments for this entity
+      let commitments: any[] = [];
+      if (entity) {
+        const { data: cmts, error: cErr } = await supabase
+          .from("investor_commitments")
+          .select("investor_id, committed_amount, called_amount, funded_amount, currency, status")
+          .eq("entity_id", entity.id)
+          .neq("status", "cancelled")
+          .order("committed_amount", { ascending: false });
+        if (cErr) return res.status(500).json({ error: cErr.message });
+        commitments = cmts ?? [];
+      }
+
+      // Step 3: fall back to yc_holdings equal-split if no commitments found
+      if (commitments.length === 0) {
+        const { data: holdings, error: hErr } = await supabase
+          .from("yc_holdings")
+          .select("investor_id, investor_airtable_id, investment_amount_usd, currency")
+          .eq("deal_name", dealName);
+        if (!hErr && holdings && holdings.length > 0) {
+          const seen = new Set<string>();
+          const deduped = holdings.filter((h: any) => {
+            const key = h.investor_airtable_id || h.investor_id;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          const airtableIds = deduped.map((h: any) => h.investor_airtable_id).filter(Boolean);
+          const { data: invs } = await supabase.from("investors").select("id,airtable_id,full_name,email,investor_type").in("airtable_id", airtableIds);
+          const invMap = new Map((invs ?? []).map((i: any) => [i.airtable_id, i]));
+          const lps = deduped.map((h: any) => {
+            const inv = invMap.get(h.investor_airtable_id);
+            return { investor_id: h.investor_id, full_name: inv?.full_name ?? "Unknown", email: inv?.email ?? null, investment_amount_usd: Number(h.investment_amount_usd) || 0, currency: h.currency ?? "USD", status: "active" };
+          }).sort((a: any, b: any) => b.investment_amount_usd - a.investment_amount_usd);
+          const total_usd = lps.reduce((s: number, r: any) => s + r.investment_amount_usd, 0);
+          return res.json({ deal_name: dealName, lp_count: lps.length, total_usd, lps, source: "yc_holdings" });
+        }
+      }
+
+      // Step 4: fetch investor names for the commitments
+      const investorIds = Array.from(new Set(commitments.map((c: any) => c.investor_id)));
       const { data: investors, error: iErr } = await supabase
         .from("investors")
-        .select("id, airtable_id, full_name, email, investor_type")
-        .in("airtable_id", airtableIds);
+        .select("id, full_name, email, investor_type")
+        .in("id", investorIds);
       if (iErr) return res.status(500).json({ error: iErr.message });
+      const investorMap = new Map((investors ?? []).map((i: any) => [i.id, i]));
 
-      const investorMap = new Map((investors ?? []).map((i: any) => [i.airtable_id, i]));
-
-      const lps = deduped
-        .map((h: any) => {
-          const inv = investorMap.get(h.investor_airtable_id);
-          return {
-            investor_id:           h.investor_id,
-            full_name:             inv?.full_name ?? "Unknown",
-            email:                 inv?.email ?? null,
-            investor_type:         inv?.investor_type ?? null,
-            investment_amount_usd: Number(h.investment_amount_usd) || 0,
-            currency:              h.currency ?? "USD",
-            moic:                  Number(h.moic) || 1,
-          };
-        })
-        .sort((a: any, b: any) => b.investment_amount_usd - a.investment_amount_usd);
+      const lps = commitments.map((c: any) => {
+        const inv = investorMap.get(c.investor_id);
+        return {
+          investor_id:           c.investor_id,
+          full_name:             inv?.full_name ?? "Unknown",
+          email:                 inv?.email ?? null,
+          investor_type:         inv?.investor_type ?? null,
+          investment_amount_usd: Number(c.committed_amount) || 0,
+          funded_amount:         Number(c.funded_amount) || 0,
+          currency:              c.currency ?? "USD",
+          status:                c.status ?? "active",
+        };
+      });
 
       const total_usd = lps.reduce((s: number, r: any) => s + r.investment_amount_usd, 0);
-      res.json({ deal_name: dealName, lp_count: lps.length, total_usd, lps });
+      res.json({ deal_name: dealName, entity_name: entity?.name ?? null, lp_count: lps.length, total_usd, lps, source: "investor_commitments" });
     } catch (err: any) {
       res.status(500).json({ error: err.message ?? "Unknown error" });
     }
