@@ -43,12 +43,9 @@ const delawareSections: Record<string, string> = {
 const caymanNav = [
   { href: "/cayman",                  label: "Dashboard",              icon: LayoutDashboard, section: "overview" },
   { href: "/cayman/fund-overview",    label: "Fund Overview",          icon: Landmark,        section: "overview" },
-  { href: "/cayman/lp-onboarding",    label: "Onboard LP",             icon: UserPlus,        section: "investors" },
   { href: "/cayman/lp-register",      label: "LP Register",            icon: Users,           section: "investors" },
-  { href: "/cayman/lp-portfolio",     label: "LP Portfolio",           icon: Layers,          section: "investors" },
   { href: "/cayman/capital-calls",    label: "Capital Calls",          icon: Phone,           section: "investors" },
   { href: "/cayman/nav",              label: "NAV / Fair Value",       icon: BarChart3,       section: "finance" },
-  { href: "/cayman/series-expenses",  label: "Series Expenses",        icon: Receipt,         section: "finance" },
   { href: "/cayman/waterfall",        label: "Waterfall",              icon: TrendingUp,      section: "finance" },
   { href: "/cayman/tax-accounts",     label: "Tax & Capital Accounts", icon: BookOpen,        section: "finance" },
   { href: "/cayman/accounts-payable", label: "Accounts Payable",       icon: FileCheck,       section: "finance" },
