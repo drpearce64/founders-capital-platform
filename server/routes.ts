@@ -2314,6 +2314,117 @@ Founders Capital`;
     res.json(data);
   });
 
+  // POST /api/invoices/upload — drag-and-drop PDF or CSV invoice upload
+  app.post("/api/invoices/upload", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file provided" });
+
+      const { mimetype, originalname, path: tmpPath, size } = req.file;
+      const meta = req.body; // jurisdiction, series_tag, entity_id, vendor, notes, currency
+
+      const invoices: any[] = [];
+
+      // ── CSV: parse rows into invoice records ──────────────────────────────
+      if (mimetype === "text/csv" || originalname.endsWith(".csv")) {
+        const fs = await import("fs");
+        const raw = fs.readFileSync(tmpPath, "utf-8");
+        const lines = raw.split(/\r?\n/).filter(Boolean);
+        if (lines.length < 2) return res.status(400).json({ error: "CSV has no data rows" });
+
+        const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_"));
+        const getCol = (row: string[], name: string) => {
+          const i = headers.indexOf(name);
+          return i >= 0 ? row[i]?.trim() : undefined;
+        };
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(",");
+          const amount = parseFloat(getCol(cols, "amount") ?? getCol(cols, "total") ?? "0");
+          if (!amount) continue;
+          invoices.push({
+            vendor:          getCol(cols, "vendor")        || getCol(cols, "supplier") || meta.vendor || "Unknown",
+            invoice_number:  getCol(cols, "invoice_number") || getCol(cols, "invoice_no") || null,
+            invoice_date:    getCol(cols, "invoice_date")   || getCol(cols, "date")       || null,
+            due_date:        getCol(cols, "due_date")        || null,
+            description:     `[CSV upload: ${originalname}] ` + (getCol(cols, "description") || getCol(cols, "narrative") || ""),
+            amount,
+            currency:        getCol(cols, "currency")        || meta.currency || "USD",
+            series_tag:      meta.series_tag  || null,
+            entity_id:       meta.entity_id   || null,
+            notes:           meta.notes || null,
+            status:          "draft",
+          });
+        }
+      }
+
+      // ── PDF: store file in Supabase Storage + create a draft invoice ────
+      else if (mimetype === "application/pdf" || originalname.endsWith(".pdf")) {
+        const fs = await import("fs");
+        const fileBuffer = fs.readFileSync(tmpPath);
+
+        // Upload to Supabase Storage
+        const storageKey = `invoices/${Date.now()}_${originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        try { await supabase.storage.createBucket("documents", { public: false }); } catch (_) {}
+        const { error: uploadErr } = await supabase.storage
+          .from("documents")
+          .upload(storageKey, fileBuffer, { contentType: "application/pdf", upsert: true });
+
+        // Best-effort PDF text extraction for vendor/amount hints
+        let vendorHint = meta.vendor || "";
+        let amountHint: number | null = null;
+        let invoiceDateHint: string | null = null;
+        try {
+          const pdfParse = (await import("pdf-parse")).default;
+          const pdfData = await pdfParse(fileBuffer);
+          const text = pdfData.text || "";
+
+          // Try to extract amount (look for largest currency figure)
+          const amounts = [...text.matchAll(/[$£€]?\s?([\d,]+\.\d{2})/g)]
+            .map(m => parseFloat(m[1].replace(/,/g, "")))
+            .filter(n => n > 0 && n < 10_000_000)
+            .sort((a, b) => b - a);
+          if (amounts.length) amountHint = amounts[0];
+
+          // Try to extract date
+          const dateMatch = text.match(/(\d{1,2}[\s/.-](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/i);
+          if (dateMatch) invoiceDateHint = dateMatch[1];
+        } catch (_) { /* pdf-parse failure is non-fatal */ }
+
+        invoices.push({
+          vendor:           vendorHint || "Unknown (PDF)",
+          description:      `[PDF upload: ${originalname}]` + (meta.notes ? ` ${meta.notes}` : ""),
+          invoice_date:     invoiceDateHint || null,
+          amount:           amountHint || 0,
+          currency:         meta.currency || "USD",
+          series_tag:       meta.series_tag  || null,
+          entity_id:        meta.entity_id   || null,
+          notes:            uploadErr ? null : `Storage: ${storageKey}`,
+          has_attachment:   !uploadErr,
+          status:           "draft",
+          gmail_subject:    `Uploaded PDF: ${originalname}`,
+        });
+      } else {
+        return res.status(400).json({ error: "Only PDF and CSV files are supported" });
+      }
+
+      if (!invoices.length) return res.status(400).json({ error: "No valid invoice rows found in file" });
+
+      // Insert all parsed invoices
+      const { data, error } = await supabase
+        .from("invoices")
+        .insert(invoices)
+        .select();
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Clean up tmp file
+      try { const fs = await import("fs"); fs.unlinkSync(tmpPath); } catch (_) {}
+
+      res.json({ imported: data?.length ?? 0, invoices: data });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Upload failed" });
+    }
+  });
+
   // PATCH /api/invoices/:id — update invoice (mark paid, update status, etc.)
   app.patch("/api/invoices/:id", async (req, res) => {
     const allowed = [
