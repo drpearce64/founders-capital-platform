@@ -1459,7 +1459,12 @@ Founders Capital`;
         description:       row.description   || row.vendor || "(AP Ledger import)",
         cost_date:         row.cost_date     || new Date().toISOString().slice(0, 10),
         due_date:          row.due_date      || null,
-        category:          row.category      || "other",
+        category:          (() => {
+          const c = (row.category || "").toLowerCase();
+          if (c === "formation") return "formation";
+          if (c === "legal" || c.includes("legal") || c.includes("professional")) return "legal";
+          return "other";
+        })(),
         currency:          row.currency      || "USD",
         amount:            row.amount        ?? 0,
         fx_rate_to_usd:    row.fx_rate_to_usd ?? 1,
@@ -1473,12 +1478,29 @@ Founders Capital`;
 
       try {
         if (row.invoice_ref) {
-          // Upsert on entity_id + invoice_ref
-          const { error } = await supabase
+          // Check if row exists first (no unique constraint — use select-then-update/insert)
+          const { data: existing } = await supabase
             .from("entity_costs")
-            .upsert(payload, { onConflict: "entity_id,invoice_ref", ignoreDuplicates: false });
-          if (error) { errors.push(`${row.invoice_ref}: ${error.message}`); }
-          else upserted++;
+            .select("id")
+            .eq("entity_id", row.entity_id)
+            .eq("invoice_ref", row.invoice_ref)
+            .limit(1);
+          if (existing && existing.length > 0) {
+            // Update existing row
+            const { error } = await supabase
+              .from("entity_costs")
+              .update(payload)
+              .eq("id", existing[0].id);
+            if (error) { errors.push(`${row.invoice_ref}: ${error.message}`); }
+            else upserted++;
+          } else {
+            // Insert new row
+            const { error } = await supabase
+              .from("entity_costs")
+              .insert(payload);
+            if (error) { errors.push(`${row.invoice_ref}: ${error.message}`); }
+            else upserted++;
+          }
         } else {
           // No invoice_ref — insert only if no existing row with same entity+vendor+date+amount
           const { data: existing } = await supabase
