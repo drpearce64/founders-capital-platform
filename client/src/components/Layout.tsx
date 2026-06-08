@@ -12,10 +12,7 @@ import {
 // ── Delaware nav ──────────────────────────────────────────────────────────────
 const delawareNav = [
   { href: "/",                   label: "Dashboard",              icon: LayoutDashboard, section: "overview" },
-  { href: "/lp-onboarding",      label: "Onboard LP",             icon: UserPlus,        section: "investors" },
-  { href: "/lp-register",        label: "LP Register",            icon: Users,           section: "investors" },
   { href: "/lp-portfolio",       label: "LP Portfolio",           icon: Layers,          section: "investors" },
-  { href: "/capital-calls",      label: "Capital Calls",          icon: Phone,           section: "finance" },
   { href: "/series-expenses",    label: "Series Expenses",        icon: Receipt,         section: "finance" },
   { href: "/waterfall",          label: "Waterfall",              icon: TrendingUp,      section: "finance" },
   { href: "/nav-marks",          label: "NAV / Fair Value",       icon: BarChart3,       section: "finance" },
