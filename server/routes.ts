@@ -3394,41 +3394,45 @@ Founders Capital`;
     try {
       const dealName = decodeURIComponent(req.params.dealName);
 
-      // Step 1: fetch holdings for this deal
+      // Step 1: fetch holdings for this deal (include investor_airtable_id for name lookup)
       const { data: holdings, error: hErr } = await supabase
         .from("yc_holdings")
-        .select("investor_id, investment_amount_usd, currency, moic")
+        .select("investor_id, investor_airtable_id, investment_amount_usd, currency, moic")
         .eq("deal_name", dealName);
       if (hErr) return res.status(500).json({ error: hErr.message });
 
-      // Deduplicate by investor_id
+      // Deduplicate by investor_airtable_id (the reliable unique key)
       const seen = new Set<string>();
       const deduped = (holdings ?? []).filter((h: any) => {
-        if (seen.has(h.investor_id)) return false;
-        seen.add(h.investor_id);
+        const key = h.investor_airtable_id || h.investor_id;
+        if (seen.has(key)) return false;
+        seen.add(key);
         return true;
       });
 
-      // Step 2: fetch investor names in one query
-      const investorIds = Array.from(seen);
+      // Step 2: fetch investor names via airtable_id
+      const airtableIds = deduped.map((h: any) => h.investor_airtable_id).filter(Boolean);
       const { data: investors, error: iErr } = await supabase
         .from("investors")
-        .select("id, full_name, email, investor_type")
-        .in("id", investorIds);
+        .select("id, airtable_id, full_name, email, investor_type")
+        .in("airtable_id", airtableIds);
       if (iErr) return res.status(500).json({ error: iErr.message });
 
-      const investorMap = new Map((investors ?? []).map((i: any) => [i.id, i]));
+      const investorMap = new Map((investors ?? []).map((i: any) => [i.airtable_id, i]));
 
       const lps = deduped
-        .map((h: any) => ({
-          investor_id:           h.investor_id,
-          full_name:             investorMap.get(h.investor_id)?.full_name ?? "Unknown",
-          email:                 investorMap.get(h.investor_id)?.email ?? null,
-          investor_type:         investorMap.get(h.investor_id)?.investor_type ?? null,
-          investment_amount_usd: Number(h.investment_amount_usd) || 0,
-          currency:              h.currency ?? "USD",
-          moic:                  Number(h.moic) || 1,
-        }))
+        .map((h: any) => {
+          const inv = investorMap.get(h.investor_airtable_id);
+          return {
+            investor_id:           h.investor_id,
+            full_name:             inv?.full_name ?? "Unknown",
+            email:                 inv?.email ?? null,
+            investor_type:         inv?.investor_type ?? null,
+            investment_amount_usd: Number(h.investment_amount_usd) || 0,
+            currency:              h.currency ?? "USD",
+            moic:                  Number(h.moic) || 1,
+          };
+        })
         .sort((a: any, b: any) => b.investment_amount_usd - a.investment_amount_usd);
 
       const total_usd = lps.reduce((s: number, r: any) => s + r.investment_amount_usd, 0);
