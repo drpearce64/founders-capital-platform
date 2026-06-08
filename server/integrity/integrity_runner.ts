@@ -173,7 +173,7 @@ function compareField(
 async function runCheckGroup(
   group: CheckGroup,
   pat: string,
-  supabase: ReturnType<typeof createClient>
+  supabase: any
 ): Promise<{
   mismatches: Mismatch[];
   records_checked: number;
@@ -256,7 +256,7 @@ async function runCheckGroup(
   const atKeys = new Set(
     atRecords.map(r => safeStr(r.fields[group.airtable_join_field]).toLowerCase()).filter(Boolean)
   );
-  const orphanCount = [...sbMap.keys()].filter(k => !atKeys.has(k)).length;
+  const orphanCount = Array.from(sbMap.keys()).filter(k => !atKeys.has(k)).length;
   if (orphanCount > 0) {
     fields_checked++;
     mismatches.push({
