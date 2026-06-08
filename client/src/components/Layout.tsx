@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
-  LayoutDashboard, Building2, Users, UserPlus, Phone, TrendingUp, Shield,
+  LayoutDashboard, Users, UserPlus, Phone, TrendingUp, Shield,
   Receipt, BarChart3, FolderOpen, UserCog, Layers, FileText, RefreshCw,
   PieChart, FileSpreadsheet, BookOpen, FileCheck, Network, Globe, Landmark,
   ChevronRight, CalendarDays, Rocket, BarChart2, BookUser, Briefcase, ShieldCheck,
@@ -12,7 +12,6 @@ import {
 // ── Delaware nav ──────────────────────────────────────────────────────────────
 const delawareNav = [
   { href: "/",                   label: "Dashboard",              icon: LayoutDashboard, section: "overview" },
-  { href: "/spvs",               label: "SPVs",                   icon: Building2,       section: "overview" },
   { href: "/lp-onboarding",      label: "Onboard LP",             icon: UserPlus,        section: "investors" },
   { href: "/lp-register",        label: "LP Register",            icon: Users,           section: "investors" },
   { href: "/lp-portfolio",       label: "LP Portfolio",           icon: Layers,          section: "investors" },
