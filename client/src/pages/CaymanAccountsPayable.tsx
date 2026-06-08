@@ -23,7 +23,7 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{ imported: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [meta, setMeta] = useState({ series_tag: "PLATFORM", vendor: "", currency: "USD", notes: "" });
+  const [meta, setMeta] = useState({ entity_id: CAYMAN_ENTITIES[0].value, vendor: "", currency: "USD", notes: "" });
   const { toast } = useToast();
 
   const handleDrop = (e: React.DragEvent) => {
@@ -38,12 +38,11 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      form.append("series_tag", meta.series_tag);
-      form.append("jurisdiction", "cayman");
+      form.append("entity_id", meta.entity_id);
       if (meta.vendor) form.append("vendor", meta.vendor);
       if (meta.currency) form.append("currency", meta.currency);
       if (meta.notes) form.append("notes", meta.notes);
-      const res = await fetch("/api/invoices/upload", { method: "POST", body: form });
+      const res = await fetch("/api/entity-costs/upload", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
       setResult({ imported: data.imported });
@@ -106,11 +105,12 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
               <Label className="text-xs">Entity</Label>
               <select
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={meta.series_tag}
-                onChange={e => setMeta(m => ({ ...m, series_tag: e.target.value }))}
+                value={meta.entity_id}
+                onChange={e => setMeta(m => ({ ...m, entity_id: e.target.value }))}
               >
-                <option value="PLATFORM">FC Platform (Cayman LP)</option>
-                <option value="GP">FC Platform GP</option>
+                {CAYMAN_ENTITIES.map(e => (
+                  <option key={e.value} value={e.value}>{e.label}</option>
+                ))}
               </select>
             </div>
             <div className="space-y-1">
@@ -155,10 +155,7 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
   );
 }
 
-const CAYMAN_ENTITIES = [
-  { value: "14d76562-2219-4121-b0bd-5379018ac3b4", label: "Founders Capital Strat. Opps. Fund I LP" },
-  { value: "3540df09-f8bb-43ca-a4de-b89945b6b16b", label: "FC Strat. Opps. Fund I GP Limited" },
-];
+// CAYMAN_ENTITIES also defined above InvoiceUploadPanel — this is the canonical definition
 const CAYMAN_ENTITY_IDS = CAYMAN_ENTITIES.map(e => e.value);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -289,7 +286,7 @@ export default function CaymanAccountsPayable() {
 
       {/* Upload Panel */}
       <InvoiceUploadPanel onUploaded={() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/entity-costs", "cayman"] });
       }} />
 
       {/* KPI Cards */}

@@ -2522,6 +2522,88 @@ Founders Capital`;
     res.json(data);
   });
 
+  // POST /api/entity-costs/upload — drag-and-drop PDF or CSV for Cayman entity costs
+  app.post("/api/entity-costs/upload", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file provided" });
+      const { mimetype, originalname, path: tmpPath } = req.file;
+      const meta = req.body;
+      const entity_id = meta.entity_id || null;
+      const currency  = meta.currency  || "USD";
+      const costs: any[] = [];
+
+      // ── CSV ─────────────────────────────────────────────────────────
+      if (mimetype === "text/csv" || originalname.endsWith(".csv")) {
+        const fs = await import("fs");
+        const raw = fs.readFileSync(tmpPath, "utf-8");
+        const lines = raw.split(/\r?\n/).filter(Boolean);
+        if (lines.length < 2) return res.status(400).json({ error: "CSV has no data rows" });
+        const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_"));
+        const col = (row: string[], name: string) => { const i = headers.indexOf(name); return i >= 0 ? row[i]?.trim() : undefined; };
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(",");
+          const amount = parseFloat(col(cols, "amount") ?? col(cols, "total") ?? "0");
+          if (!amount) continue;
+          costs.push({
+            entity_id,
+            cost_date:   col(cols, "date") || col(cols, "invoice_date") || new Date().toISOString().slice(0, 10),
+            description: `[CSV: ${originalname}] ` + (col(cols, "description") || col(cols, "vendor") || ""),
+            category:    col(cols, "category") || meta.category || null,
+            amount,
+            currency:    col(cols, "currency") || currency,
+            fx_rate_to_usd: parseFloat(col(cols, "fx_rate") ?? "1") || 1.0,
+            status:      "accrued",
+            notes:       meta.notes || null,
+          });
+        }
+      }
+
+      // ── PDF ─────────────────────────────────────────────────────────
+      else if (mimetype === "application/pdf" || originalname.endsWith(".pdf")) {
+        const fs = await import("fs");
+        const fileBuffer = fs.readFileSync(tmpPath);
+        let amountHint: number | null = null;
+        let dateHint: string | null = null;
+        let vendorHint = meta.vendor || "";
+        try {
+          const pdfParse = (await import("pdf-parse")).default;
+          const text = (await pdfParse(fileBuffer)).text || "";
+          const amounts = [...text.matchAll(/[$£€]?\s?([\d,]+\.\d{2})/g)]
+            .map((m: RegExpMatchArray) => parseFloat(m[1].replace(/,/g, "")))
+            .filter((n: number) => n > 0 && n < 10_000_000).sort((a: number, b: number) => b - a);
+          if (amounts.length) amountHint = amounts[0];
+          const dateMatch = text.match(/(\d{1,2}[\s/.-](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/i);
+          if (dateMatch) dateHint = dateMatch[1];
+        } catch (_) {}
+        // Store file in Supabase Storage
+        const storageKey = `invoices/${Date.now()}_${originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        try { await supabase.storage.createBucket("documents", { public: false }); } catch (_) {}
+        await supabase.storage.from("documents").upload(storageKey, fileBuffer, { contentType: "application/pdf", upsert: true });
+        costs.push({
+          entity_id,
+          cost_date:   dateHint || new Date().toISOString().slice(0, 10),
+          description: `[PDF: ${originalname}]` + (meta.notes ? ` ${meta.notes}` : ""),
+          category:    meta.category || null,
+          amount:      amountHint || 0,
+          currency,
+          fx_rate_to_usd: 1.0,
+          status:      "accrued",
+          notes:       `Vendor: ${vendorHint || "unknown"}. Storage: ${storageKey}`,
+        });
+      } else {
+        return res.status(400).json({ error: "Only PDF and CSV files are supported" });
+      }
+
+      if (!costs.length) return res.status(400).json({ error: "No valid rows found in file" });
+      const { data, error } = await supabase.from("entity_costs").insert(costs).select();
+      if (error) return res.status(500).json({ error: error.message });
+      try { const fs = await import("fs"); fs.unlinkSync(tmpPath); } catch (_) {}
+      res.json({ imported: data?.length ?? 0, costs: data });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Upload failed" });
+    }
+  });
+
   // PATCH /api/entity-costs/:id — mark paid / update status
   app.patch("/api/entity-costs/:id", async (req, res) => {
     const allowed = [
