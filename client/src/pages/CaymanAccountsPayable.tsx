@@ -16,6 +16,11 @@ import { useToast } from "@/hooks/use-toast";
 
 const CURRENCIES = ["USD", "GBP", "EUR", "KYD"];
 
+const CAYMAN_ENTITIES = [
+  { value: "14d76562-2219-4121-b0bd-5379018ac3b4", label: "Founders Capital Strat. Opps. Fund I LP" },
+  { value: "3540df09-f8bb-43ca-a4de-b89945b6b16b", label: "FC Strat. Opps. Fund I GP Limited" },
+];
+
 // ── Invoice Upload Panel ───────────────────────────────────────────────
 function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
   const [dragging, setDragging] = useState(false);
@@ -155,7 +160,6 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
   );
 }
 
-// CAYMAN_ENTITIES also defined above InvoiceUploadPanel — this is the canonical definition
 const CAYMAN_ENTITY_IDS = CAYMAN_ENTITIES.map(e => e.value);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
