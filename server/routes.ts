@@ -1414,6 +1414,127 @@ Founders Capital`;
     });
   });
 
+  // POST /api/sync/ap-ledger — upsert AP ledger rows parsed by the cron agent from Google Drive
+  // Body: { file_id: string, rows: Array<{ sheet, invoice_ref, vendor, description, invoice_date, due_date,
+  //   category, currency, invoice_amount, fx_rate_to_usd, amount_usd, status, paid_date, payment_ref, notes }> }
+  app.post("/api/sync/ap-ledger", async (req, res) => {
+    const { file_id, rows } = req.body as {
+      file_id: string;
+      rows: Array<{
+        entity_id: string;
+        invoice_ref?: string;
+        vendor?: string;
+        description?: string;
+        cost_date?: string;
+        due_date?: string;
+        category?: string;
+        currency?: string;
+        amount?: number;
+        fx_rate_to_usd?: number;
+        amount_usd?: number;
+        status?: string;
+        paid_date?: string;
+        payment_reference?: string;
+        notes?: string;
+        drive_link?: string;
+      }>;
+    };
+
+    if (!rows || !Array.isArray(rows)) {
+      return res.status(400).json({ error: "rows array required" });
+    }
+
+    let upserted = 0;
+    let skipped  = 0;
+    const errors: string[] = [];
+
+    for (const row of rows) {
+      if (!row.entity_id) { skipped++; continue; }
+
+      // Build upsert payload — invoice_ref + entity_id = natural key
+      const payload: Record<string, any> = {
+        entity_id:         row.entity_id,
+        invoice_ref:       row.invoice_ref   || null,
+        vendor:            row.vendor        || null,
+        description:       row.description   || row.vendor || "(AP Ledger import)",
+        cost_date:         row.cost_date     || new Date().toISOString().slice(0, 10),
+        due_date:          row.due_date      || null,
+        category:          row.category      || "other",
+        currency:          row.currency      || "USD",
+        amount:            row.amount        ?? 0,
+        fx_rate_to_usd:    row.fx_rate_to_usd ?? 1,
+        amount_usd:        row.amount_usd    ?? (row.amount ?? 0) * (row.fx_rate_to_usd ?? 1),
+        status:            row.status        || "accrued",
+        paid_date:         row.paid_date     || null,
+        payment_reference: row.payment_reference || null,
+        notes:             row.notes         || null,
+        drive_link:        row.drive_link    || null,
+      };
+
+      try {
+        if (row.invoice_ref) {
+          // Upsert on entity_id + invoice_ref
+          const { error } = await supabase
+            .from("entity_costs")
+            .upsert(payload, { onConflict: "entity_id,invoice_ref", ignoreDuplicates: false });
+          if (error) { errors.push(`${row.invoice_ref}: ${error.message}`); }
+          else upserted++;
+        } else {
+          // No invoice_ref — insert only if no existing row with same entity+vendor+date+amount
+          const { data: existing } = await supabase
+            .from("entity_costs")
+            .select("id")
+            .eq("entity_id", row.entity_id)
+            .eq("vendor", row.vendor || "")
+            .eq("amount_usd", payload.amount_usd)
+            .limit(1);
+          if (existing && existing.length > 0) { skipped++; continue; }
+          const { error } = await supabase.from("entity_costs").insert(payload);
+          if (error) { errors.push(`(no ref) ${row.vendor}: ${error.message}`); }
+          else upserted++;
+        }
+      } catch (e: any) {
+        errors.push(`${row.invoice_ref || row.vendor}: ${e.message}`);
+      }
+    }
+
+    // Log the sync
+    await audit("entity_costs", null, "ap_ledger_sync",
+      `AP Ledger sync from Drive file ${file_id}: ${upserted} upserted, ${skipped} skipped, ${errors.length} errors`);
+
+    res.json({
+      ok: true,
+      file_id,
+      upserted,
+      skipped,
+      errors,
+      total_rows: rows.length,
+      synced_at: new Date().toISOString(),
+    });
+  });
+
+  // POST /api/sync/ap-ledger/trigger — queue an on-demand sync (portal “Sync from Drive” button)
+  app.post("/api/sync/ap-ledger/trigger", async (_req, res) => {
+    const { error } = await supabase
+      .from("sync_triggers")
+      .insert({ sync_type: "ap_ledger", status: "pending" });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, message: "AP ledger sync queued — will run within the next scheduled check" });
+  });
+
+  // GET /api/sync/ap-ledger/status — last sync result from audit log
+  app.get("/api/sync/ap-ledger/status", async (_req, res) => {
+    const { data, error } = await supabase
+      .from("audit_log")
+      .select("description,created_at")
+      .eq("action", "ap_ledger_sync")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    if (error) return res.json({ last_sync: null });
+    res.json({ last_sync: data.created_at, summary: data.description });
+  });
+
   // GET /api/sync/airtable/log  — recent sync log entries
   app.get("/api/sync/airtable/log", async (req, res) => {
     const limit = Number(req.query.limit) || 50;

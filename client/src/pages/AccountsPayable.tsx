@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { FileCheck, Plus, CheckCircle2, Clock, AlertTriangle, DollarSign, Filter, Upload, FileText, Loader2, Trash2 } from "lucide-react";
+import { FileCheck, Plus, CheckCircle2, Clock, AlertTriangle, DollarSign, Filter, Upload, FileText, Loader2, Trash2, RefreshCw } from "lucide-react";
 
 const DE_ENTITIES = [
   { value: "a1000000-0000-0000-0000-000000000005", label: "Founders Capital Platform LP",       short: "Platform LP"  },
@@ -133,6 +133,28 @@ export default function AccountsPayable() {
   const [search, setSearch] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const { data: syncStatus } = useQuery<any>({
+    queryKey: ["/api/sync/ap-ledger/status"],
+    queryFn: () => apiRequest("GET", "/api/sync/ap-ledger/status").then(r => r.json()),
+    refetchInterval: 60000,
+  });
+
+  async function handleManualSync() {
+    setSyncing(true);
+    try {
+      const res  = await apiRequest("POST", "/api/sync/ap-ledger/trigger");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Sync trigger failed");
+      toast({ title: "Sync queued", description: "The AP ledger sync has been triggered. Results will appear shortly." });
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["/api/entity-costs"] }), 5000);
+    } catch (e: any) {
+      toast({ title: "Sync error", description: e.message, variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const { data: rawCosts = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/entity-costs", activeEntity],
@@ -200,10 +222,21 @@ export default function AccountsPayable() {
         <div>
           <h1 className="text-xl font-bold tracking-tight" style={{ color: "hsl(var(--foreground))" }}>Accounts Payable</h1>
           <p className="text-sm mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>🇺🇸 Delaware — all entities · amounts in USD</p>
+          {syncStatus?.last_sync && (
+            <p className="text-xs mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+              Last Drive sync: {new Date(syncStatus.last_sync).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
         </div>
-        <Button onClick={() => setShowUpload(true)} className="flex items-center gap-2 text-sm" style={{ background: "hsl(var(--primary))", color: "white" }}>
-          <Upload size={15} /> Upload Invoice
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleManualSync} disabled={syncing} variant="outline" className="flex items-center gap-2 text-sm">
+            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing…" : "Sync from Drive"}
+          </Button>
+          <Button onClick={() => setShowUpload(true)} className="flex items-center gap-2 text-sm" style={{ background: "hsl(var(--primary))", color: "white" }}>
+            <Upload size={15} /> Upload Invoice
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeEntity} onValueChange={v => { setActiveEntity(v); setSearch(""); }}>
