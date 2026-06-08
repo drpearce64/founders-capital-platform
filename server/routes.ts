@@ -1323,14 +1323,16 @@ Founders Capital`;
     child.stderr?.on("data", (d: Buffer) => { output += d.toString(); });
 
     child.on("close", async (code) => {
-      await supabase.from("audit_log").insert({
-        table_name:  "airtable_sync",
-        record_id:   null,
-        action:      "create",
-        description: `Airtable sync finished with exit code ${code}`,
-        actor:       "system",
-        new_values:  { exit_code: code, output: output.slice(-2000) },
-      }).catch(() => {});
+      try {
+        await supabase.from("audit_log").insert({
+          table_name:  "airtable_sync",
+          record_id:   null,
+          action:      "create",
+          description: `Airtable sync finished with exit code ${code}`,
+          actor:       "system",
+          new_values:  { exit_code: code, output: output.slice(-2000) },
+        });
+      } catch (_) { /* non-fatal */ }
     });
 
     res.json({ status: "sync_started", message: "Airtable sync running in background" });
@@ -1393,14 +1395,16 @@ Founders Capital`;
       });
     });
 
-    await supabase.from("audit_log").insert({
-      table_name:  "gmail_invoice_sync",
-      record_id:   null,
-      action:      "create",
-      description: `Gmail invoice sync: ${result.synced} synced, ${result.skipped} skipped, ${result.errors?.length ?? 0} errors`,
-      actor:       "system",
-      new_values:  { result, output: output.slice(-2000) },
-    }).catch(() => {}); // non-fatal
+    try {
+      await supabase.from("audit_log").insert({
+        table_name:  "gmail_invoice_sync",
+        record_id:   null,
+        action:      "create",
+        description: `Gmail invoice sync: ${result.synced} synced, ${result.skipped} skipped, ${result.errors?.length ?? 0} errors`,
+        actor:       "system",
+        new_values:  { result, output: output.slice(-2000) },
+      });
+    } catch (_) { /* non-fatal */ }
 
     res.json({
       status: "ok",
@@ -1674,14 +1678,16 @@ Founders Capital`;
       }
 
       // 3. Audit log
-      await supabase.from("audit_log").insert({
-        table_name: "entities",
-        record_id: entityId,
-        action: existing ? "update" : "create",
-        description: `Vector series wizard: ${existing ? "updated" : "provisioned"} ${short_code} (${deal_code})`,
-        actor: "wizard",
-        new_values: { short_code, name, deal_code, airtable_record_id },
-      }).catch(() => {});
+      try {
+        await supabase.from("audit_log").insert({
+          table_name: "entities",
+          record_id: entityId,
+          action: existing ? "update" : "create",
+          description: `Vector series wizard: ${existing ? "updated" : "provisioned"} ${short_code} (${deal_code})`,
+          actor: "wizard",
+          new_values: { short_code, name, deal_code, airtable_record_id },
+        });
+      } catch (_) { /* non-fatal */ }
 
       // 4. Optionally trigger SPA sync for this specific entity
       let spaResult: any = null;
@@ -1689,7 +1695,7 @@ Founders Capital`;
         const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
         const DEALS_TABLE   = "tbln6AszmitsErPgh";
         try {
-          await supabase.storage.createBucket("documents", { public: false }).catch(() => {});
+          try { await supabase.storage.createBucket("documents", { public: false }); } catch (_) { /* ignore if exists */ }
           const atRes = await fetch(
             `https://api.airtable.com/v0/${AIRTABLE_BASE}/${DEALS_TABLE}/${airtable_record_id}`,
             { headers: { Authorization: `Bearer ${PAT}` } }
@@ -1817,7 +1823,7 @@ Founders Capital`;
 
     try {
       // Ensure storage bucket exists
-      await supabase.storage.createBucket("documents", { public: false }).catch(() => {}); // ignore if exists
+      try { await supabase.storage.createBucket("documents", { public: false }); } catch (_) { /* ignore if exists */ }
 
       for (const [airtableRecordId, { entityId, dealCode }] of Object.entries(VECTOR_DEAL_MAP)) {
         try {
