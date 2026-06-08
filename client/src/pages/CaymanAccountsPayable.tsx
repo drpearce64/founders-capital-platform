@@ -11,10 +11,149 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, FileCheck, DollarSign, Clock, CheckCircle2, AlertTriangle, TrendingDown, Filter } from "lucide-react";
+import { Plus, FileCheck, DollarSign, Clock, CheckCircle2, AlertTriangle, TrendingDown, Filter, Upload, FileText, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CURRENCIES = ["USD", "GBP", "EUR", "KYD"];
+
+// ── Invoice Upload Panel ───────────────────────────────────────────────
+function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
+  const [dragging, setDragging] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<{ imported: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useState({ series_tag: "PLATFORM", vendor: "", currency: "USD", notes: "" });
+  const { toast } = useToast();
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f) { setFile(f); setResult(null); setError(null); }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setUploading(true); setError(null); setResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("series_tag", meta.series_tag);
+      form.append("jurisdiction", "cayman");
+      if (meta.vendor) form.append("vendor", meta.vendor);
+      if (meta.currency) form.append("currency", meta.currency);
+      if (meta.notes) form.append("notes", meta.notes);
+      const res = await fetch("/api/invoices/upload", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      setResult({ imported: data.imported });
+      toast({ title: `${data.imported} invoice(s) imported as draft` });
+      setFile(null);
+      onUploaded();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Upload className="h-4 w-4 text-primary" /> Upload Invoices
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Drop zone */}
+          <div
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => document.getElementById("cayman-invoice-file-input")?.click()}
+            className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 cursor-pointer transition-colors
+              ${dragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"}`}
+          >
+            <input
+              id="cayman-invoice-file-input"
+              type="file"
+              accept=".pdf,.csv"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) { setFile(f); setResult(null); setError(null); } }}
+            />
+            {file ? (
+              <>
+                <FileText className="h-7 w-7 text-primary" />
+                <p className="text-sm font-medium text-center">{file.name}</p>
+                <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+                <button onClick={e => { e.stopPropagation(); setFile(null); }}
+                  className="absolute top-2 right-2 text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              </>
+            ) : (
+              <>
+                <Upload className="h-7 w-7 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground text-center">Drop a PDF or CSV here<br /><span className="text-xs">or click to browse</span></p>
+              </>
+            )}
+          </div>
+
+          {/* Metadata */}
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Entity</Label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={meta.series_tag}
+                onChange={e => setMeta(m => ({ ...m, series_tag: e.target.value }))}
+              >
+                <option value="PLATFORM">FC Platform (Cayman LP)</option>
+                <option value="GP">FC Platform GP</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Vendor (PDF only — overrides auto-detect)</Label>
+              <Input placeholder="e.g. Maples Group" value={meta.vendor}
+                onChange={e => setMeta(m => ({ ...m, vendor: e.target.value }))} className="text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Currency</Label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={meta.currency}
+                  onChange={e => setMeta(m => ({ ...m, currency: e.target.value }))}
+                >
+                  <option>USD</option><option>GBP</option><option>EUR</option><option>KYD</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Notes</Label>
+                <Input placeholder="Optional" value={meta.notes}
+                  onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} className="text-sm" />
+              </div>
+            </div>
+            <Button
+              className="w-full gap-2"
+              disabled={!file || uploading}
+              onClick={handleUpload}
+              data-testid="button-upload-invoice"
+            >
+              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Import Invoices</>}
+            </Button>
+            {result && <p className="text-xs text-green-600 font-medium">✓ {result.imported} invoice(s) imported as draft — review below</p>}
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">
+          PDF: creates one draft invoice (amount auto-detected). CSV: each row becomes a draft invoice. All imports land in <strong>Draft</strong> status for review.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 const CAYMAN_ENTITIES = [
   { value: "14d76562-2219-4121-b0bd-5379018ac3b4", label: "Founders Capital Strat. Opps. Fund I LP" },
@@ -147,6 +286,11 @@ export default function CaymanAccountsPayable() {
           <Plus className="h-4 w-4" /> Add Invoice
         </Button>
       </div>
+
+      {/* Upload Panel */}
+      <InvoiceUploadPanel onUploaded={() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      }} />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-4">
