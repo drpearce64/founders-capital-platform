@@ -328,20 +328,22 @@ export async function runIntegrityCheck(): Promise<IntegrityReport> {
   const totalRecords  = groupSummaries.reduce((s, g) => s + g.records_checked, 0);
 
   // Persist last result to Supabase audit_log for portal UI
-  await supabase.from("audit_log").insert({
-    table_name:  "integrity_check",
-    record_id:   null,
-    action:      allMismatches.length === 0 ? "ok" : "mismatch",
-    description: `Integrity check: ${allMismatches.length} mismatch(es) across ${totalRecords} records`,
-    actor:       "system",
-    new_values:  {
-      mismatch_count: allMismatches.length,
-      critical_count: criticalCount,
-      warning_count:  warningCount,
-      total_records:  totalRecords,
-      mismatches:     allMismatches.slice(0, 50), // cap stored payload
-    },
-  }).catch(() => {}); // non-fatal
+  try {
+    await supabase.from("audit_log").insert({
+      table_name:  "integrity_check",
+      record_id:   null,
+      action:      allMismatches.length === 0 ? "ok" : "mismatch",
+      description: `Integrity check: ${allMismatches.length} mismatch(es) across ${totalRecords} records`,
+      actor:       "system",
+      new_values:  {
+        mismatch_count: allMismatches.length,
+        critical_count: criticalCount,
+        warning_count:  warningCount,
+        total_records:  totalRecords,
+        mismatches:     allMismatches.slice(0, 50), // cap stored payload
+      },
+    });
+  } catch (_) { /* non-fatal — audit log write failure does not block result */ }
 
   return {
     run_at: new Date().toISOString(),
