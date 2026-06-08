@@ -16,7 +16,170 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Vector LP Breakdown Sheet ───────────────────────────────────────────────────
+interface VectorLPRow {
+  investor_id: string;
+  full_name: string;
+  email: string | null;
+  investor_type: string | null;
+  committed_amount: number;
+  called_amount: number;
+  funded_amount: number;
+  currency: string;
+  status: string;
+}
+interface VectorLPBreakdownData {
+  entity_id: string;
+  entity_name: string;
+  short_code: string;
+  lp_count: number;
+  total_committed: number;
+  total_called: number;
+  lps: VectorLPRow[];
+}
+
+function VectorLPBreakdownSheet({ entity, onClose }: { entity: any | null; onClose: () => void }) {
+  const { data, isLoading, error } = useQuery<VectorLPBreakdownData>({
+    queryKey: ["/api/vector-series", entity?.id, "lp-breakdown"],
+    queryFn: () => apiRequest("GET", `/api/vector-series/${entity.id}/lp-breakdown`).then(r => r.json()),
+    enabled: !!entity,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const seriesLabel = entity?.short_code?.replace("FC-", "") ?? "";
+  const investmentName = entity?.investments?.[0]?.company_name ?? null;
+  const totalCommitted = data?.total_committed ?? 0;
+  const totalCalled = data?.total_called ?? 0;
+  const pctCalled = totalCommitted > 0 ? ((totalCalled / totalCommitted) * 100).toFixed(0) : "0";
+
+  return (
+    <Sheet open={!!entity} onOpenChange={open => { if (!open) onClose(); }}>
+      <SheetContent side="right" className="w-[540px] sm:max-w-[540px] overflow-y-auto">
+        <SheetHeader className="mb-5">
+          <div className="flex items-center gap-2">
+            <Users size={16} style={{ color: "hsl(142 70% 45%)" }} />
+            <SheetTitle className="text-base">
+              {seriesLabel}{investmentName ? ` · ${investmentName}` : ""} — LP Breakdown
+            </SheetTitle>
+          </div>
+          {entity && (
+            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+              {entity.name} · Delaware Series LLC
+            </p>
+          )}
+        </SheetHeader>
+
+        {isLoading && (
+          <div className="flex items-center justify-center h-32 text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+            Loading LP data…
+          </div>
+        )}
+        {error && (
+          <div className="text-sm p-4 rounded" style={{ background: "rgba(198,40,40,0.1)", color: "#ef5350" }}>
+            Failed to load LP data
+          </div>
+        )}
+
+        {data && !isLoading && (
+          <>
+            {/* Summary KPIs */}
+            <div className="grid grid-cols-3 gap-3 mb-5">
+              <div className="rounded-lg p-3" style={{ background: "hsl(var(--muted))" }}>
+                <p className="text-xs mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>LP Count</p>
+                <p className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>{data.lp_count}</p>
+              </div>
+              <div className="rounded-lg p-3" style={{ background: "hsl(var(--muted))" }}>
+                <p className="text-xs mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Total Committed</p>
+                <p className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>
+                  ${totalCommitted.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <div className="rounded-lg p-3" style={{ background: "hsl(var(--muted))" }}>
+                <p className="text-xs mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Called ({pctCalled}%)</p>
+                <p className="text-xl font-bold" style={{ color: "hsl(142 70% 45%)" }}>
+                  ${totalCalled.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+              </div>
+            </div>
+
+            {/* LP table */}
+            <div className="rounded-lg overflow-hidden border" style={{ borderColor: "hsl(var(--border))" }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: "hsl(var(--muted))", borderBottom: "1px solid hsl(var(--border))" }}>
+                    <th className="px-3 py-2 text-left font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>#</th>
+                    <th className="px-3 py-2 text-left font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>LP Name</th>
+                    <th className="px-3 py-2 text-right font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Committed</th>
+                    <th className="px-3 py-2 text-right font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Called</th>
+                    <th className="px-3 py-2 text-right font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.lps.map((lp, idx) => {
+                    const sharePct = totalCommitted > 0 ? (lp.committed_amount / totalCommitted) * 100 : 0;
+                    const isFullyCalled = lp.called_amount >= lp.committed_amount * 0.99;
+                    return (
+                      <tr
+                        key={lp.investor_id}
+                        className="border-b"
+                        style={{
+                          borderColor: "hsl(var(--border))",
+                          background: idx % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.3)",
+                        }}
+                      >
+                        <td className="px-3 py-2 font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>{idx + 1}</td>
+                        <td className="px-3 py-2">
+                          <p className="font-medium" style={{ color: "hsl(var(--foreground))" }}>{lp.full_name}</p>
+                          {lp.email && (
+                            <p className="text-[10px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{lp.email}</p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: "hsl(var(--foreground))" }}>
+                          ${lp.committed_amount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono">
+                          <span style={{ color: isFullyCalled ? "hsl(142 70% 45%)" : "hsl(var(--foreground))" }}>
+                            ${lp.called_amount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>
+                          {sharePct.toFixed(1)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: "hsl(var(--muted))", borderTop: "1px solid hsl(var(--border))" }}>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+                      {data.lp_count} LP{data.lp_count !== 1 ? "s" : ""}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold font-mono" style={{ color: "hsl(var(--foreground))" }}>
+                      ${totalCommitted.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold font-mono" style={{ color: "hsl(142 70% 45%)" }}>
+                      ${totalCalled.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>100%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {data.lps.length === 0 && (
+              <p className="text-xs mt-4 text-center" style={{ color: "hsl(var(--muted-foreground))" }}>
+                No LP commitment records found for this series.
+              </p>
+            )}
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (n: number, decimals = 0) =>
   "$" + (n || 0).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
@@ -111,6 +274,7 @@ function DrillContent({
   totalCost,
   totalFV,
   uncalled,
+  onOpenLPBreakdown,
 }: {
   drillKey: DrillKey;
   filteredCommitments: any[];
@@ -121,6 +285,7 @@ function DrillContent({
   totalCost: number;
   totalFV: number;
   uncalled: number;
+  onOpenLPBreakdown?: (entity: any) => void;
 }) {
   const TH = "text-xs font-medium uppercase tracking-wider pb-2 text-left";
   const TD = "py-2.5 text-sm";
@@ -476,6 +641,17 @@ function DrillContent({
                   )}
                 </div>
               )}
+              {/* LP Breakdown button */}
+              <div className="mt-3 pt-3 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+                <button
+                  onClick={() => onOpenLPBreakdown && onOpenLPBreakdown(spv)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
+                  style={{ background: "hsl(142 70% 45% / 0.12)", color: "hsl(142 70% 45%)" }}
+                >
+                  <Users size={12} />
+                  LP Breakdown
+                </button>
+              </div>
             </div>
           );
         })}
@@ -625,6 +801,7 @@ export default function Dashboard() {
   const [activeDrill, setActiveDrill] = useState<DrillKey | null>(null);
   const [selectedSeries, setSelectedSeries] = useState<string>("all");
   const [valuationInv, setValuationInv] = useState<any | null>(null);
+  const [lpBreakdownEntity, setLpBreakdownEntity] = useState<any | null>(null);
 
   const openDrill = (key: DrillKey) => setActiveDrill(key);
   const closeDrill = () => setActiveDrill(null);
@@ -775,6 +952,7 @@ export default function Dashboard() {
                 totalCost={totalCost}
                 totalFV={totalFV}
                 uncalled={uncalled}
+                onOpenLPBreakdown={(entity) => { closeDrill(); setLpBreakdownEntity(entity); }}
               />
             </>
           )}
@@ -867,9 +1045,20 @@ export default function Dashboard() {
         )}
 
         {selectedSeries !== "all" && (
-          <span className="ml-auto text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Showing data for this series only
-          </span>
+          <>
+            <button
+              onClick={() => selectedEntity && setLpBreakdownEntity(selectedEntity)}
+              title="View LP breakdown"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-opacity hover:opacity-80"
+              style={{ background: "hsl(142 70% 45% / 0.12)", color: "hsl(142 70% 45%)" }}
+            >
+              <Users size={11} />
+              <span>LP Breakdown</span>
+            </button>
+            <span className="ml-auto text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+              Showing data for this series only
+            </span>
+          </>
         )}
       </div>
 
@@ -1215,6 +1404,12 @@ export default function Dashboard() {
       investment={valuationInv}
       open={!!valuationInv}
       onClose={() => setValuationInv(null)}
+    />
+
+    {/* Vector LP Breakdown Sheet */}
+    <VectorLPBreakdownSheet
+      entity={lpBreakdownEntity}
+      onClose={() => setLpBreakdownEntity(null)}
     />
     </>
   );

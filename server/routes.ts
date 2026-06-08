@@ -3477,6 +3477,76 @@ Founders Capital`;
     }
   });
 
+  // GET /api/vector-series/:entityId/lp-breakdown — LP breakdown for a Vector Series entity
+  // Uses investor_commitments (real per-LP amounts from Airtable sync)
+  app.get("/api/vector-series/:entityId/lp-breakdown", async (req, res) => {
+    try {
+      const { entityId } = req.params;
+
+      // Fetch the entity to verify it exists and get its name
+      const { data: entityArr, error: eErr } = await supabase
+        .from("entities")
+        .select("id, name, short_code")
+        .eq("id", entityId);
+      if (eErr) return res.status(500).json({ error: eErr.message });
+      const entity = (entityArr ?? [])[0];
+      if (!entity) return res.status(404).json({ error: "Entity not found" });
+
+      // Fetch all non-cancelled commitments for this entity
+      const { data: cmts, error: cErr } = await supabase
+        .from("investor_commitments")
+        .select("investor_id, committed_amount, called_amount, funded_amount, currency, status")
+        .eq("entity_id", entityId)
+        .neq("status", "cancelled")
+        .order("committed_amount", { ascending: false });
+      if (cErr) return res.status(500).json({ error: cErr.message });
+
+      const commitments = cmts ?? [];
+
+      // Fetch investor names/emails for all investor_ids
+      const investorIds = Array.from(new Set(commitments.map((c: any) => c.investor_id).filter(Boolean)));
+      let invMap = new Map<string, any>();
+      if (investorIds.length > 0) {
+        const { data: invs } = await supabase
+          .from("investors")
+          .select("id, full_name, email, investor_type")
+          .in("id", investorIds);
+        (invs ?? []).forEach((i: any) => invMap.set(i.id, i));
+      }
+
+      const lps = commitments.map((c: any) => {
+        const inv = invMap.get(c.investor_id);
+        return {
+          investor_id: c.investor_id,
+          full_name: inv?.full_name ?? "Unknown",
+          email: inv?.email ?? null,
+          investor_type: inv?.investor_type ?? null,
+          committed_amount: Number(c.committed_amount) || 0,
+          called_amount: Number(c.called_amount) || 0,
+          funded_amount: Number(c.funded_amount) || 0,
+          currency: c.currency ?? "USD",
+          status: c.status,
+        };
+      });
+
+      const total_committed = lps.reduce((s: number, r: any) => s + r.committed_amount, 0);
+      const total_called = lps.reduce((s: number, r: any) => s + r.called_amount, 0);
+
+      res.json({
+        entity_id: entityId,
+        entity_name: entity.name,
+        short_code: entity.short_code,
+        lp_count: lps.length,
+        total_committed,
+        total_called,
+        lps,
+        source: "investor_commitments",
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // GET /api/yc-deals — read from Supabase yc_deals table (seeded from Airtable)
   app.get("/api/yc-deals", async (_req, res) => {
     try {
