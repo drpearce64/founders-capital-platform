@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, FileCheck, DollarSign, Clock, CheckCircle2, AlertTriangle, TrendingDown, Filter, Upload, FileText, X, Loader2 } from "lucide-react";
+import { Plus, FileCheck, DollarSign, Clock, CheckCircle2, AlertTriangle, TrendingDown, Filter, Upload, FileText, X, Loader2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CURRENCIES = ["USD", "GBP", "EUR", "KYD"];
@@ -204,8 +204,9 @@ export default function CaymanAccountsPayable() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("invoices");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("active");
   const [search, setSearch] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState({
     entity_id: CAYMAN_ENTITIES[0].value,
     vendor: "", description: "",
@@ -251,6 +252,17 @@ export default function CaymanAccountsPayable() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest("DELETE", `/api/entity-costs/${id}`).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-costs", "cayman"] });
+      setConfirmDeleteId(null);
+      toast({ title: "Invoice voided", description: "The invoice has been marked as void." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   // KPIs
   const active = rawCosts.filter((i: any) => i.status !== "void");
   const totalUSD    = active.reduce((s: number, i: any) => s + (parseFloat(i.amount_usd) || 0), 0);
@@ -265,7 +277,8 @@ export default function CaymanAccountsPayable() {
 
   // Filtered list
   const filtered = rawCosts.filter((i: any) => {
-    if (filterStatus !== "all" && i.status !== filterStatus) return false;
+    if (filterStatus === "active" && i.status === "void") return false;
+    if (filterStatus !== "all" && filterStatus !== "active" && i.status !== filterStatus) return false;
     if (search) {
       const s = search.toLowerCase();
       const desc = (i.description ?? "").toLowerCase();
@@ -392,10 +405,11 @@ export default function CaymanAccountsPayable() {
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="all">All (inc. Void)</SelectItem>
                       <SelectItem value="accrued">Accrued</SelectItem>
                       <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="void">Void</SelectItem>
+                      <SelectItem value="void">Void only</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -438,22 +452,35 @@ export default function CaymanAccountsPayable() {
                           <TableCell className="text-right text-sm font-medium">{fmt(amtUSD)}</TableCell>
                           <TableCell>{statusBadge(inv.status)}</TableCell>
                           <TableCell className="text-right">
-                            {inv.status === "accrued" && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs"
-                                data-testid={`button-mark-paid-${inv.id}`}
-                                onClick={() => patchMutation.mutate({ id: inv.id, status: "paid" })}
-                                disabled={patchMutation.isPending}>
-                                <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Paid
-                              </Button>
-                            )}
-                            {inv.status === "paid" && (
-                              <span className="text-xs text-green-600 flex items-center justify-end gap-1">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Paid
-                              </span>
-                            )}
+                            <div className="flex items-center justify-end gap-1">
+                              {inv.status === "accrued" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs"
+                                  data-testid={`button-mark-paid-${inv.id}`}
+                                  onClick={() => patchMutation.mutate({ id: inv.id, status: "paid" })}
+                                  disabled={patchMutation.isPending}>
+                                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Paid
+                                </Button>
+                              )}
+                              {inv.status === "paid" && (
+                                <span className="text-xs text-green-600 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3.5 w-3.5" /> Paid
+                                </span>
+                              )}
+                              {inv.status !== "void" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  data-testid={`button-delete-${inv.id}`}
+                                  onClick={() => setConfirmDeleteId(inv.id)}
+                                  disabled={deleteMutation.isPending}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -624,6 +651,28 @@ export default function CaymanAccountsPayable() {
               disabled={!form.vendor || !form.amount || createMutation.isPending}
               onClick={() => createMutation.mutate({ ...form, amount: parseFloat(form.amount), fx_rate_to_usd: parseFloat(form.fx_rate_to_usd) })}>
               {createMutation.isPending ? "Saving…" : "Add Invoice"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation Dialog ───────────────────────────────────── */}
+      <Dialog open={!!confirmDeleteId} onOpenChange={open => { if (!open) setConfirmDeleteId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Void Invoice?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will mark the invoice as <strong>void</strong> and remove it from all KPIs and P&amp;L totals.
+            The record is retained for audit purposes and can be viewed using the &ldquo;Void only&rdquo; filter.
+          </p>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => confirmDeleteId && deleteMutation.mutate(confirmDeleteId)}>
+              {deleteMutation.isPending ? "Voiding…" : "Void Invoice"}
             </Button>
           </DialogFooter>
         </DialogContent>

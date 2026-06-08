@@ -2627,6 +2627,21 @@ Founders Capital`;
     res.json(data);
   });
 
+  // DELETE /api/entity-costs/:id — soft-delete by setting status to 'void'
+  app.delete("/api/entity-costs/:id", async (req, res) => {
+    const { data, error } = await supabase
+      .from("entity_costs")
+      .update({ status: "void" })
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Cost entry not found" });
+    await audit("entity_costs", req.params.id, "delete",
+      `Cost voided: ${data.description}`);
+    res.json({ ok: true });
+  });
+
   // GET /api/entity-costs/summary — from entity_costs_summary view
   app.get("/api/entity-costs/summary", async (_req, res) => {
     const { data, error } = await supabase
