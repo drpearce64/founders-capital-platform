@@ -28,7 +28,7 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{ imported: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [meta, setMeta] = useState({ entity_id: CAYMAN_ENTITIES[0].value, vendor: "", currency: "USD", notes: "", category: "other" });
+  const [meta, setMeta] = useState({ entity_id: CAYMAN_ENTITIES[0].value, vendor: "", invoice_ref: "", due_date: "", currency: "USD", fx_rate_to_usd: "1", notes: "", category: "other" });
   const { toast } = useToast();
 
   const handleDrop = (e: React.DragEvent) => {
@@ -43,12 +43,15 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      form.append("entity_id", meta.entity_id);
-      if (meta.vendor) form.append("vendor", meta.vendor);
-      if (meta.currency) form.append("currency", meta.currency);
-      if (meta.notes) form.append("notes", meta.notes);
+      form.append("entity_id",      meta.entity_id);
+      if (meta.vendor)         form.append("vendor",         meta.vendor);
+      if (meta.invoice_ref)    form.append("invoice_ref",    meta.invoice_ref);
+      if (meta.due_date)       form.append("due_date",       meta.due_date);
+      if (meta.fx_rate_to_usd) form.append("fx_rate_to_usd", meta.fx_rate_to_usd);
+      if (meta.currency)       form.append("currency",       meta.currency);
+      if (meta.notes)          form.append("notes",          meta.notes);
       form.append("category", meta.category || "other");
-      const res = await fetch("/api/entity-costs/upload", { method: "POST", body: form });
+      const res = await apiRequest("POST", "/api/entity-costs/upload", form);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
       setResult({ imported: data.imported });
@@ -119,10 +122,29 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
                 ))}
               </select>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Vendor (PDF only — overrides auto-detect)</Label>
-              <Input placeholder="e.g. Maples Group" value={meta.vendor}
-                onChange={e => setMeta(m => ({ ...m, vendor: e.target.value }))} className="text-sm" />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Vendor / Supplier</Label>
+                <Input placeholder="e.g. Maples Group" value={meta.vendor}
+                  onChange={e => setMeta(m => ({ ...m, vendor: e.target.value }))} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Invoice Ref</Label>
+                <Input placeholder="e.g. INV-001" value={meta.invoice_ref}
+                  onChange={e => setMeta(m => ({ ...m, invoice_ref: e.target.value }))} className="text-sm" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Due Date</Label>
+                <Input type="date" value={meta.due_date}
+                  onChange={e => setMeta(m => ({ ...m, due_date: e.target.value }))} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">FX Rate to USD</Label>
+                <Input type="number" step="0.0001" value={meta.fx_rate_to_usd}
+                  onChange={e => setMeta(m => ({ ...m, fx_rate_to_usd: e.target.value }))} className="text-sm" />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
@@ -427,13 +449,16 @@ export default function CaymanAccountsPayable() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Entity</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Source</TableHead>
-                      <TableHead className="text-right">USD</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
+                      <TableHead className="text-xs">Invoice Ref</TableHead>
+                      <TableHead className="text-xs">Vendor</TableHead>
+                      <TableHead className="text-xs">Description</TableHead>
+                      <TableHead className="text-xs">Entity</TableHead>
+                      <TableHead className="text-xs">Date</TableHead>
+                      <TableHead className="text-xs">Due Date</TableHead>
+                      <TableHead className="text-xs text-right">Source</TableHead>
+                      <TableHead className="text-xs text-right">USD</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                      <TableHead className="text-xs text-right">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -441,11 +466,14 @@ export default function CaymanAccountsPayable() {
                       const amtUSD = parseFloat(inv.amount_usd) || parseFloat(inv.amount) || 0;
                       return (
                         <TableRow key={inv.id} data-testid={`invoice-row-${inv.id}`}>
-                          <TableCell className="text-sm max-w-[260px] truncate">{inv.description ?? "—"}</TableCell>
+                          <TableCell className="text-xs font-mono">{inv.invoice_ref || "—"}</TableCell>
+                          <TableCell className="text-xs font-medium">{inv.vendor || "—"}</TableCell>
+                          <TableCell className="text-sm max-w-[220px] truncate">{inv.description ?? "—"}</TableCell>
                           <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                             {inv.entities?.short_code ?? entityLabel(inv.entity_id)}
                           </TableCell>
                           <TableCell className="text-sm whitespace-nowrap">{fmtDate(inv.cost_date)}</TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{fmtDate(inv.due_date)}</TableCell>
                           <TableCell className="text-right text-sm">
                             {inv.currency !== "USD" ? fmt(parseFloat(inv.amount), inv.currency) : "—"}
                           </TableCell>

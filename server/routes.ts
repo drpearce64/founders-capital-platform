@@ -2544,16 +2544,21 @@ Founders Capital`;
           const cols = lines[i].split(",");
           const amount = parseFloat(col(cols, "amount") ?? col(cols, "total") ?? "0");
           if (!amount) continue;
+          const csvVendor = col(cols, "vendor") || col(cols, "supplier") || meta.vendor || null;
+          const csvInvRef = col(cols, "invoice_ref") || col(cols, "invoice_number") || col(cols, "inv_ref") || meta.invoice_ref || null;
           costs.push({
             entity_id,
-            cost_date:   col(cols, "date") || col(cols, "invoice_date") || new Date().toISOString().slice(0, 10),
-            description: `[CSV: ${originalname}] ` + (col(cols, "description") || col(cols, "vendor") || ""),
-            category:    col(cols, "category") || meta.category || "other",
+            cost_date:       col(cols, "date") || col(cols, "invoice_date") || new Date().toISOString().slice(0, 10),
+            due_date:        col(cols, "due_date") || null,
+            description:     col(cols, "description") || csvVendor || `[CSV: ${originalname}]`,
+            category:        col(cols, "category") || meta.category || "other",
             amount,
-            currency:    col(cols, "currency") || currency,
-            fx_rate_to_usd: parseFloat(col(cols, "fx_rate") ?? "1") || 1.0,
-            status:      "accrued",
-            notes:       meta.notes || null,
+            currency:        col(cols, "currency") || currency,
+            fx_rate_to_usd:  parseFloat(col(cols, "fx_rate") ?? "1") || 1.0,
+            status:          col(cols, "status") || "accrued",
+            vendor:          csvVendor,
+            invoice_ref:     csvInvRef,
+            notes:           meta.notes || null,
           });
         }
       }
@@ -2581,14 +2586,17 @@ Founders Capital`;
         await supabase.storage.from("documents").upload(storageKey, fileBuffer, { contentType: "application/pdf", upsert: true });
         costs.push({
           entity_id,
-          cost_date:   dateHint || new Date().toISOString().slice(0, 10),
-          description: `[PDF: ${originalname}]` + (meta.notes ? ` ${meta.notes}` : ""),
-          category:    meta.category || "other",
-          amount:      amountHint || 0,
+          cost_date:     dateHint || new Date().toISOString().slice(0, 10),
+          description:   meta.notes || vendorHint || `[PDF: ${originalname}]`,
+          category:      meta.category || "other",
+          amount:        amountHint || 0,
           currency,
-          fx_rate_to_usd: 1.0,
-          status:      "accrued",
-          notes:       `Vendor: ${vendorHint || "unknown"}. Storage: ${storageKey}`,
+          fx_rate_to_usd: parseFloat(meta.fx_rate_to_usd) || 1.0,
+          status:        "accrued",
+          vendor:        vendorHint || null,
+          invoice_ref:   meta.invoice_ref || null,
+          due_date:      meta.due_date || null,
+          notes:         `PDF stored: ${storageKey}`,
         });
       } else {
         return res.status(400).json({ error: "Only PDF and CSV files are supported" });
@@ -2609,6 +2617,8 @@ Founders Capital`;
     const allowed = [
       "status", "paid_date", "payment_reference", "notes",
       "fx_rate_to_usd", "description", "category",
+      "invoice_ref", "vendor", "due_date", "drive_link",
+      "amount", "amount_usd", "currency", "cost_date",
     ];
     const payload: Record<string, any> = {};
     for (const k of allowed) {

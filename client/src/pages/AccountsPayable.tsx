@@ -7,744 +7,385 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { FileCheck, Plus, CheckCircle2, Clock, AlertTriangle, DollarSign, Filter, TrendingDown, Upload, FileText, X, Loader2 } from "lucide-react";
+import { FileCheck, Plus, CheckCircle2, Clock, AlertTriangle, DollarSign, Filter, Upload, FileText, Loader2, Trash2 } from "lucide-react";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-interface Invoice {
-  id: string;
-  invoice_number?: string;
-  vendor: string;
-  description?: string;
-  invoice_date?: string;
-  due_date?: string;
-  amount: number;
-  currency: string;
-  fx_rate_to_usd: number;
-  amount_usd: number;
-  series_tag?: string;
-  status: "unpaid" | "paid" | "overdue" | "void" | "draft";
-  paid_date?: string;
-  payment_reference?: string;
-  gmail_subject?: string;
-  has_attachment?: boolean;
-  notes?: string;
-  created_at: string;
+const DE_ENTITIES = [
+  { value: "a1000000-0000-0000-0000-000000000005", label: "Founders Capital Platform LP",       short: "Platform LP"  },
+  { value: "a1000000-0000-0000-0000-000000000004", label: "Founders Capital Platform GP, LP",  short: "Platform GP"  },
+  { value: "a1000000-0000-0000-0000-000000000006", label: "FC Platform LP — Series Vector I",  short: "Vector I"     },
+  { value: "9f05cfb3-8f46-4175-92b2-c31afac38550", label: "FC Platform LP — Series Vector II", short: "Vector II"    },
+  { value: "4b9c14d2-f183-40e4-9268-cde01b565455", label: "FC Platform LP — Series Vector III",short: "Vector III"   },
+  { value: "c677bafd-be0b-4ddd-911f-a14746165f77", label: "FC Platform LP — Series Vector IV", short: "Vector IV"    },
+  { value: "2184a8e9-30fd-4b45-b415-908571bbeae3", label: "FC Platform LP — Series Vector V",  short: "Vector V"     },
+  { value: "a1000000-0000-0000-0000-000000000003", label: "Founders Capital US Holdings LLC",  short: "US Holdings"  },
+];
+
+const CATEGORY_OPTIONS = [
+  { value: "formation",  label: "Formation costs"        },
+  { value: "legal",      label: "Legal & professional"   },
+  { value: "admin",      label: "Administration"         },
+  { value: "audit",      label: "Audit & accounting"     },
+  { value: "compliance", label: "Compliance & regulatory"},
+  { value: "management", label: "Management fees"        },
+  { value: "other",      label: "Other"                  },
+];
+
+const CURRENCIES = ["USD", "GBP", "EUR"];
+
+const fmt  = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(n);
+const fmt2 = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
+const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+function statusBadge(status: string) {
+  const map: Record<string, { label: string; cls: string }> = {
+    accrued: { label: "Accrued", cls: "bg-amber-100 text-amber-800" },
+    paid:    { label: "Paid",    cls: "bg-green-100 text-green-800" },
+    void:    { label: "Void",    cls: "bg-gray-100 text-gray-400"  },
+  };
+  const s = map[status] ?? map.accrued;
+  return <Badge className={s.cls + " text-[10px] px-1.5 py-0 font-medium border-0"}>{s.label}</Badge>;
 }
 
-interface APSummary {
-  series_tag: string;
-  entity_name: string;
-  total_invoices: number;
-  total_amount: number;
-  unpaid_amount: number;
-  paid_amount: number;
-  overdue_amount: number;
-  unpaid_count: number;
-  paid_count: number;
-  overdue_count: number;
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-const fmt = (n: number, currency = "USD") =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
-
-const fmtDate = (d?: string) =>
-  d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
-
-const statusBadge = (status: string) => {
-  const map: Record<string, { label: string; className: string }> = {
-    unpaid:  { label: "Unpaid",  className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
-    paid:    { label: "Paid",    className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
-    overdue: { label: "Overdue", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
-    draft:   { label: "Draft",   className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
-    void:    { label: "Void",    className: "bg-gray-100 text-gray-400 dark:bg-gray-900 dark:text-gray-500" },
-  };
-  const s = map[status] || map.draft;
-  return <Badge className={`${s.className} border-0 font-medium text-xs`}>{s.label}</Badge>;
-};
-
-const seriesLabel = (tag?: string) => {
-  const map: Record<string, string> = {
-    "VECTOR-III": "Vector III (Reach Power)",
-    "VECTOR-IV":  "Vector IV (Project Prometheus)",
-    "VECTOR-I":   "Vector I (Shield AI)",
-    "PLATFORM":   "FC Platform",
-  };
-  return tag ? (map[tag] || tag) : "—";
-};
-
-// ── Invoice Upload Panel ─────────────────────────────────────────────────
-function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
-  const [dragging, setDragging] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<{ imported: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [meta, setMeta] = useState({ series_tag: "", vendor: "", currency: "USD", notes: "" });
+function InvoiceUploadPanel({ entityId, onDone }: { entityId: string; onDone: () => void }) {
   const { toast } = useToast();
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [currency, setCurrency] = useState("USD");
+  const [fxRate, setFxRate] = useState("1");
+  const [vendor, setVendor] = useState("");
+  const [invoiceRef, setInvoiceRef] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [category, setCategory] = useState("other");
+  const [notes, setNotes] = useState("");
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) { setFile(f); setResult(null); setError(null); }
-  };
-
-  const handleUpload = async () => {
-    if (!file) return;
-    setUploading(true); setError(null); setResult(null);
+  async function handleFile(file: File) {
+    setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      if (meta.series_tag) form.append("series_tag", meta.series_tag);
-      if (meta.vendor) form.append("vendor", meta.vendor);
-      if (meta.currency) form.append("currency", meta.currency);
-      if (meta.notes) form.append("notes", meta.notes);
-
-      const res = await fetch("/api/invoices/upload", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      setResult({ imported: data.imported });
-      toast({ title: `${data.imported} invoice(s) imported as draft` });
-      setFile(null);
-      onUploaded();
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("entity_id",      entityId);
+      fd.append("currency",       currency);
+      fd.append("fx_rate_to_usd", fxRate);
+      fd.append("vendor",         vendor);
+      fd.append("invoice_ref",    invoiceRef);
+      fd.append("due_date",       dueDate);
+      fd.append("category",       category);
+      fd.append("notes",          notes);
+      const res  = await apiRequest("POST", "/api/entity-costs/upload", fd);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      toast({ title: `${json.imported} invoice(s) imported` });
+      onDone();
     } catch (e: any) {
-      setError(e.message);
+      toast({ title: "Upload error", description: e.message, variant: "destructive" });
     } finally {
       setUploading(false);
     }
-  };
+  }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Upload className="h-4 w-4 text-primary" /> Upload Invoices
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* Drop zone */}
-          <div
-            onDragOver={e => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => document.getElementById("invoice-file-input")?.click()}
-            className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 cursor-pointer transition-colors
-              ${ dragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"}`}
-          >
-            <input
-              id="invoice-file-input"
-              type="file"
-              accept=".pdf,.csv"
-              className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) { setFile(f); setResult(null); setError(null); } }}
-            />
-            {file ? (
-              <>
-                <FileText className="h-7 w-7 text-primary" />
-                <p className="text-sm font-medium text-center">{file.name}</p>
-                <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
-                <button onClick={e => { e.stopPropagation(); setFile(null); }}
-                  className="absolute top-2 right-2 text-muted-foreground hover:text-foreground">
-                  <X className="h-4 w-4" />
-                </button>
-              </>
-            ) : (
-              <>
-                <Upload className="h-7 w-7 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground text-center">Drop a PDF or CSV here<br /><span className="text-xs">or click to browse</span></p>
-              </>
-            )}
-          </div>
-
-          {/* Metadata */}
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Series / Entity</Label>
-              <select
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={meta.series_tag}
-                onChange={e => setMeta(m => ({ ...m, series_tag: e.target.value }))}
-              >
-                <option value="">— Not specified —</option>
-                <option value="PLATFORM">FC Platform (Cayman)</option>
-                <option value="VECTOR-I">Vector I</option>
-                <option value="VECTOR-II">Vector II</option>
-                <option value="VECTOR-III">Vector III (Reach Power)</option>
-                <option value="VECTOR-IV">Vector IV (Project Prometheus)</option>
-                <option value="VECTOR-V">Vector V</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Vendor (PDF only — overrides auto-detect)</Label>
-              <Input placeholder="e.g. Maples Group" value={meta.vendor}
-                onChange={e => setMeta(m => ({ ...m, vendor: e.target.value }))} className="text-sm" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Currency</Label>
-                <select
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  value={meta.currency}
-                  onChange={e => setMeta(m => ({ ...m, currency: e.target.value }))}
-                >
-                  <option>USD</option><option>GBP</option><option>EUR</option><option>CAD</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Notes</Label>
-                <Input placeholder="Optional" value={meta.notes}
-                  onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} className="text-sm" />
-              </div>
-            </div>
-            <Button
-              className="w-full gap-2"
-              disabled={!file || uploading}
-              onClick={handleUpload}
-              data-testid="button-upload-invoice"
-            >
-              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Import Invoices</>}
-            </Button>
-            {result && <p className="text-xs text-green-600 font-medium">&#10003; {result.imported} invoice(s) imported as draft — review below</p>}
-            {error && <p className="text-xs text-destructive">{error}</p>}
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground mt-3">
-          PDF: creates one draft invoice (amount auto-detected from text). CSV: each row becomes a draft invoice.
-          All imports land in <strong>Draft</strong> status for review before changing to Unpaid.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── Mark Paid Dialog ──────────────────────────────────────────────────────────
-function MarkPaidDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
-  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
-  const [reference, setReference] = useState("");
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      apiRequest("PATCH", `/api/invoices/${invoice.id}`, {
-        status: "paid",
-        paid_date: paidDate,
-        payment_reference: reference || undefined,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/ap/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/ap/aging"] });
-      toast({ title: "Invoice marked as paid" });
-      onClose();
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  return (
-    <div className="space-y-4 pt-2">
-      <p className="text-sm text-muted-foreground">
-        Marking <strong>{invoice.vendor}</strong> — {fmt(invoice.amount, invoice.currency)} as paid.
-      </p>
-      <div className="space-y-2">
-        <Label>Payment date</Label>
-        <Input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} data-testid="input-paid-date" />
+    <div className="space-y-3 pt-2">
+      <div className="grid grid-cols-2 gap-3">
+        <div><Label className="text-xs">Vendor / Supplier</Label>
+          <Input className="h-8 text-sm mt-1" value={vendor} onChange={e => setVendor(e.target.value)} placeholder="e.g. Vcorp Services" /></div>
+        <div><Label className="text-xs">Invoice Ref</Label>
+          <Input className="h-8 text-sm mt-1" value={invoiceRef} onChange={e => setInvoiceRef(e.target.value)} placeholder="e.g. INV-001" /></div>
+        <div><Label className="text-xs">Currency</Label>
+          <Select value={currency} onValueChange={setCurrency}>
+            <SelectTrigger className="h-8 text-sm mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+          </Select></div>
+        <div><Label className="text-xs">FX Rate to USD</Label>
+          <Input className="h-8 text-sm mt-1" type="number" step="0.0001" value={fxRate} onChange={e => setFxRate(e.target.value)} /></div>
+        <div><Label className="text-xs">Due Date</Label>
+          <Input className="h-8 text-sm mt-1" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} /></div>
+        <div><Label className="text-xs">Category</Label>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="h-8 text-sm mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>{CATEGORY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+          </Select></div>
       </div>
-      <div className="space-y-2">
-        <Label>Payment reference (optional)</Label>
-        <Input placeholder="e.g. Wire ref, cheque no." value={reference} onChange={e => setReference(e.target.value)} data-testid="input-payment-reference" />
-      </div>
-      <div className="flex gap-2 pt-2">
-        <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} className="flex-1" data-testid="button-confirm-paid">
-          {mutation.isPending ? "Saving…" : "Confirm Paid"}
-        </Button>
-        <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+      <div><Label className="text-xs">Notes</Label>
+        <Input className="h-8 text-sm mt-1" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" /></div>
+      <div
+        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${dragging ? "border-primary bg-primary/5" : "border-border"}`}
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+        onClick={() => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".pdf,.csv"; inp.onchange = (ev: any) => { if (ev.target.files?.[0]) handleFile(ev.target.files[0]); }; inp.click(); }}>
+        {uploading
+          ? <div className="flex items-center justify-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Uploading…</div>
+          : <><FileText className="mx-auto h-8 w-8 mb-2 text-muted-foreground" /><p className="text-sm text-muted-foreground">Drop PDF or CSV here, or click to browse</p></>}
       </div>
     </div>
   );
 }
 
-// ── Add Invoice Dialog ────────────────────────────────────────────────────────
-function AddInvoiceDialog({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({
-    vendor: "", description: "", invoice_number: "",
-    invoice_date: new Date().toISOString().slice(0, 10),
-    due_date: "", amount: "", currency: "USD", fx_rate_to_usd: "1.0",
-    series_tag: "PLATFORM", notes: "",
-  });
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", "/api/invoices", {
-        ...form,
-        amount: parseFloat(form.amount) || 0,
-        fx_rate_to_usd: parseFloat(form.fx_rate_to_usd) || 1.0,
-        status: "unpaid",
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/ap/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/ap/aging"] });
-      toast({ title: "Invoice added" });
-      onClose();
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-  const handleCurrencyChange = (v: string) => {
-    setForm(f => ({ ...f, currency: v, fx_rate_to_usd: v === "USD" ? "1.0" : f.fx_rate_to_usd === "1.0" ? "" : f.fx_rate_to_usd }));
-  };
-
-  return (
-    <div className="space-y-4 pt-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2 col-span-2">
-          <Label>Vendor *</Label>
-          <Input placeholder="e.g. Stripe, Inc." value={form.vendor} onChange={e => set("vendor", e.target.value)} data-testid="input-vendor" />
-        </div>
-        <div className="space-y-2 col-span-2">
-          <Label>Description</Label>
-          <Input placeholder="Brief description" value={form.description} onChange={e => set("description", e.target.value)} data-testid="input-description" />
-        </div>
-        <div className="space-y-2">
-          <Label>Invoice number</Label>
-          <Input placeholder="INV-001" value={form.invoice_number} onChange={e => set("invoice_number", e.target.value)} data-testid="input-invoice-number" />
-        </div>
-        <div className="space-y-2">
-          <Label>Amount *</Label>
-          <Input type="number" placeholder="0.00" value={form.amount} onChange={e => set("amount", e.target.value)} data-testid="input-amount" />
-        </div>
-        <div className="space-y-2">
-          <Label>Invoice date</Label>
-          <Input type="date" value={form.invoice_date} onChange={e => set("invoice_date", e.target.value)} data-testid="input-invoice-date" />
-        </div>
-        <div className="space-y-2">
-          <Label>Due date</Label>
-          <Input type="date" value={form.due_date} onChange={e => set("due_date", e.target.value)} data-testid="input-due-date" />
-        </div>
-        <div className="space-y-2">
-          <Label>Currency</Label>
-          <Select value={form.currency} onValueChange={handleCurrencyChange}>
-            <SelectTrigger data-testid="select-currency"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="USD">USD</SelectItem>
-              <SelectItem value="GBP">GBP</SelectItem>
-              <SelectItem value="EUR">EUR</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Series / Entity</Label>
-          <Select value={form.series_tag} onValueChange={v => set("series_tag", v)}>
-            <SelectTrigger data-testid="select-series"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="PLATFORM">FC Platform</SelectItem>
-              <SelectItem value="VECTOR-I">Vector I</SelectItem>
-              <SelectItem value="VECTOR-III">Vector III</SelectItem>
-              <SelectItem value="VECTOR-IV">Vector IV</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {form.currency !== "USD" && (
-          <div className="space-y-2 col-span-2">
-            <Label>FX Rate to USD <span className="text-muted-foreground text-xs">(1 {form.currency} = ? USD)</span></Label>
-            <Input type="number" step="0.0001" placeholder="e.g. 1.27" value={form.fx_rate_to_usd}
-              onChange={e => set("fx_rate_to_usd", e.target.value)} data-testid="input-fx-rate" />
-            {form.amount && form.fx_rate_to_usd && parseFloat(form.fx_rate_to_usd) > 0 && (
-              <p className="text-xs text-muted-foreground">
-                USD equivalent: {fmt(parseFloat(form.amount) * parseFloat(form.fx_rate_to_usd))}
-              </p>
-            )}
-          </div>
-        )}
-        <div className="space-y-2 col-span-2">
-          <Label>Notes</Label>
-          <Input placeholder="Optional notes" value={form.notes} onChange={e => set("notes", e.target.value)} data-testid="input-notes" />
-        </div>
-      </div>
-      <div className="flex gap-2 pt-2">
-        <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.vendor || !form.amount} className="flex-1" data-testid="button-add-invoice">
-          {mutation.isPending ? "Saving…" : "Add Invoice"}
-        </Button>
-        <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-      </div>
-    </div>
-  );
-}
-
-// ── Main Component ─────────────────────────────────────────────────────────────
 export default function AccountsPayable() {
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterSeries, setFilterSeries] = useState("all");
+  const { toast } = useToast();
+  const [activeEntity, setActiveEntity] = useState(DE_ENTITIES[0].value);
+  const [filterStatus, setFilterStatus] = useState("active");
   const [search, setSearch] = useState("");
-  const [markPaidInvoice, setMarkPaidInvoice] = useState<Invoice | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("invoices");
+  const [showUpload, setShowUpload] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const { data: invoices = [], isLoading: loadingInvoices } = useQuery<Invoice[]>({
-    queryKey: ["/api/invoices"],
-    queryFn: () => apiRequest("GET", "/api/invoices").then(r => r.json()),
+  const { data: rawCosts = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/entity-costs", activeEntity],
+    queryFn: () => apiRequest("GET", `/api/entity-costs?entity_id=${activeEntity}`).then(r => r.json()),
   });
 
-  const { data: summary = [], isLoading: loadingSummary } = useQuery<APSummary[]>({
-    queryKey: ["/api/ap/summary"],
-    queryFn: () => apiRequest("GET", "/api/ap/summary").then(r => r.json()),
+  const { data: allDeCosts = [] } = useQuery<any[]>({
+    queryKey: ["/api/entity-costs", "delaware-all"],
+    queryFn: async () => {
+      const results = await Promise.all(DE_ENTITIES.map(e =>
+        apiRequest("GET", `/api/entity-costs?entity_id=${e.value}`).then(r => r.json())));
+      return (results as any[][]).flat();
+    },
   });
 
-  const { data: aging = [], isLoading: loadingAging } = useQuery<any[]>({
-    queryKey: ["/api/ap/aging"],
-    queryFn: () => apiRequest("GET", "/api/ap/aging").then(r => r.json()),
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/entity-costs", activeEntity] });
+    queryClient.invalidateQueries({ queryKey: ["/api/entity-costs", "delaware-all"] });
+  };
+
+  const patchMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/entity-costs/${id}`, { status }).then(r => r.json()),
+    onSuccess: invalidate,
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  // KPI totals — use amount_usd so mixed-currency totals are always in USD
-  const totalUnpaid  = invoices.filter(i => i.status === "unpaid").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
-  const totalOverdue = invoices.filter(i => i.status === "overdue").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
-  const totalPaid    = invoices.filter(i => i.status === "paid").reduce((s, i) => s + (i.amount_usd ?? i.amount), 0);
-  const countUnpaid  = invoices.filter(i => i.status === "unpaid").length;
-  const countOverdue = invoices.filter(i => i.status === "overdue").length;
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/entity-costs/${id}`).then(r => r.json()),
+    onSuccess: () => { invalidate(); setConfirmDeleteId(null); toast({ title: "Invoice voided" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
-  // Filtered invoice list
-  const filtered = invoices.filter(inv => {
-    if (filterStatus !== "all" && inv.status !== filterStatus) return false;
-    if (filterSeries !== "all" && inv.series_tag !== filterSeries) return false;
+  const activeCosts = rawCosts.filter((c: any) => c.status !== "void");
+  const totalBilled  = activeCosts.reduce((s: number, c: any) => s + parseFloat(c.amount_usd || 0), 0);
+  const outstanding  = activeCosts.filter((c: any) => c.status === "accrued").reduce((s: number, c: any) => s + parseFloat(c.amount_usd || 0), 0);
+  const overdue      = activeCosts.filter((c: any) => c.status === "accrued" && c.due_date && new Date(c.due_date) < new Date()).reduce((s: number, c: any) => s + parseFloat(c.amount_usd || 0), 0);
+
+  const summaryByEntity = DE_ENTITIES.map(ent => {
+    const costs = (allDeCosts as any[]).filter(c => c.entity_id === ent.value && c.status !== "void");
+    return {
+      label:       ent.short,
+      total:       costs.reduce((s, c) => s + parseFloat(c.amount_usd || 0), 0),
+      outstanding: costs.filter((c: any) => c.status === "accrued").reduce((s, c) => s + parseFloat(c.amount_usd || 0), 0),
+      paid:        costs.filter((c: any) => c.status === "paid").reduce((s, c) => s + parseFloat(c.amount_usd || 0), 0),
+      count:       costs.length,
+    };
+  });
+
+  const filtered = rawCosts.filter((c: any) => {
+    if (filterStatus === "active" && c.status === "void") return false;
+    if (filterStatus !== "all" && filterStatus !== "active" && c.status !== filterStatus) return false;
     if (search) {
       const s = search.toLowerCase();
-      if (!inv.vendor.toLowerCase().includes(s) && !(inv.description || "").toLowerCase().includes(s) && !(inv.invoice_number || "").toLowerCase().includes(s)) return false;
+      if (!([c.description, c.vendor, c.invoice_ref].filter(Boolean).join(" ").toLowerCase()).includes(s)) return false;
     }
     return true;
   });
 
+  const currentEntityLabel = DE_ENTITIES.find(e => e.value === activeEntity)?.label ?? "";
+
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="min-h-screen p-6 space-y-5" style={{ background: "hsl(var(--background))" }}>
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <FileCheck className="h-5 w-5 text-primary" />
-            Accounts Payable
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Invoice tracking across all Delaware Series entities
-          </p>
+          <h1 className="text-xl font-bold tracking-tight" style={{ color: "hsl(var(--foreground))" }}>Accounts Payable</h1>
+          <p className="text-sm mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>🇺🇸 Delaware — all entities · amounts in USD</p>
         </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1.5" data-testid="button-add-invoice-open">
-              <Plus className="h-4 w-4" /> Add Invoice
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Add Invoice</DialogTitle></DialogHeader>
-            <AddInvoiceDialog onClose={() => setAddOpen(false)} />
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setShowUpload(true)} className="flex items-center gap-2 text-sm" style={{ background: "hsl(var(--primary))", color: "white" }}>
+          <Upload size={15} /> Upload Invoice
+        </Button>
       </div>
 
-      {/* Upload Panel */}
-      <InvoiceUploadPanel onUploaded={() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/ap/summary"] });
-      }} />
+      <Tabs value={activeEntity} onValueChange={v => { setActiveEntity(v); setSearch(""); }}>
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="flex h-auto gap-1 bg-transparent p-0 w-max">
+            {DE_ENTITIES.map(e => (
+              <TabsTrigger key={e.value} value={e.value}
+                className="text-xs px-3 py-1.5 rounded-md border whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white"
+                style={{ borderColor: "hsl(var(--border))" }}>{e.short}</TabsTrigger>
+            ))}
+            <TabsTrigger value="summary"
+              className="text-xs px-3 py-1.5 rounded-md border whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white"
+              style={{ borderColor: "hsl(var(--border))" }}>Summary</TabsTrigger>
+          </TabsList>
+        </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card data-testid="kpi-unpaid">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Unpaid</p>
-                {loadingInvoices ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1">{fmt(totalUnpaid)}</p>}
-                <p className="text-xs text-muted-foreground mt-0.5">{countUnpaid} invoice{countUnpaid !== 1 ? "s" : ""}</p>
-              </div>
-              <Clock className="h-5 w-5 text-amber-500 mt-0.5" />
+        {DE_ENTITIES.map(ent => (
+          <TabsContent key={ent.value} value={ent.value} className="mt-4 space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { icon: FileCheck,     label: "Open Invoices", value: isLoading ? "…" : String(activeCosts.filter((c: any) => c.status === "accrued").length) },
+                { icon: DollarSign,    label: "Total Billed",  value: isLoading ? "…" : fmt(totalBilled) },
+                { icon: Clock,         label: "Outstanding",   value: isLoading ? "…" : fmt(outstanding) },
+                { icon: AlertTriangle, label: "Overdue",       value: isLoading ? "…" : fmt(overdue), red: overdue > 0 },
+              ].map(({ icon: Icon, label, value, red }: any) => (
+                <Card key={label} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+                  <CardContent className="pt-3 pb-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Icon size={12} style={{ color: red ? "hsl(0 70% 50%)" : "hsl(var(--primary))" }} />
+                      <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</span>
+                    </div>
+                    <div className={`text-lg font-bold ${red ? "text-red-600" : ""}`} style={red ? {} : { color: "hsl(var(--foreground))" }}>{value}</div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </CardContent>
-        </Card>
-        <Card data-testid="kpi-overdue">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Overdue</p>
-                {loadingInvoices ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{fmt(totalOverdue)}</p>}
-                <p className="text-xs text-muted-foreground mt-0.5">{countOverdue} invoice{countOverdue !== 1 ? "s" : ""}</p>
-              </div>
-              <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card data-testid="kpi-paid">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Paid (All Time)</p>
-                {loadingInvoices ? <Skeleton className="h-7 w-28 mt-1" /> : <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{fmt(totalPaid)}</p>}
-              </div>
-              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
-      {/* Summary by Series */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-primary" />
-            AP Summary by Series
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loadingSummary ? (
-            <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-          ) : summary.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">No data yet</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Series / Entity</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Unpaid</TableHead>
-                  <TableHead className="text-right">Overdue</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead className="text-right">Count</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary.map(row => (
-                  <TableRow key={row.series_tag || "unknown"} data-testid={`summary-row-${row.series_tag}`}>
-                    <TableCell className="font-medium text-sm">{seriesLabel(row.series_tag)}</TableCell>
-                    <TableCell className="text-right text-sm">{fmt(row.total_amount || 0)}</TableCell>
-                    <TableCell className="text-right text-sm text-amber-600">{fmt(row.unpaid_amount || 0)}</TableCell>
-                    <TableCell className="text-right text-sm text-red-600">{fmt(row.overdue_amount || 0)}</TableCell>
-                    <TableCell className="text-right text-sm text-green-600">{fmt(row.paid_amount || 0)}</TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">{row.total_invoices}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Invoice List + Aging Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
-          <TabsTrigger value="invoices">Invoice List</TabsTrigger>
-          <TabsTrigger value="aging">AP Aging</TabsTrigger>
-        </TabsList>
-
-        {/* ── Invoice List ─────────────────────────────────────────────── */}
-        <TabsContent value="invoices">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Filter className="h-4 w-4 text-primary" />
-                  All Invoices
-                </CardTitle>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Input placeholder="Search vendor, description…" value={search} onChange={e => setSearch(e.target.value)}
-                    className="h-8 w-48 text-sm" data-testid="input-search" />
-                  <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="h-8 w-32 text-sm" data-testid="select-filter-status">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="unpaid">Unpaid</SelectItem>
-                      <SelectItem value="overdue">Overdue</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="draft">Draft</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterSeries} onValueChange={setFilterSeries}>
-                    <SelectTrigger className="h-8 w-40 text-sm" data-testid="select-filter-series">
-                      <SelectValue placeholder="Series" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Series</SelectItem>
-                      <SelectItem value="PLATFORM">FC Platform</SelectItem>
-                      <SelectItem value="VECTOR-I">Vector I</SelectItem>
-                      <SelectItem value="VECTOR-III">Vector III</SelectItem>
-                      <SelectItem value="VECTOR-IV">Vector IV</SelectItem>
-                    </SelectContent>
-                  </Select>
+            <Card style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+              <CardHeader className="pb-2 pt-3 px-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>{ent.label}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Input placeholder="Search…" className="h-7 w-40 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
+                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                      <SelectTrigger className="h-7 w-32 text-xs"><Filter size={11} className="mr-1" /><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="all">All (inc. Void)</SelectItem>
+                        <SelectItem value="accrued">Accrued</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="void">Void only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loadingInvoices ? (
-                <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-              ) : filtered.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  <FileCheck className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">No invoices match your filters</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Vendor</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Series</TableHead>
-                      <TableHead className="text-right">Source</TableHead>
-                      <TableHead className="text-right">USD</TableHead>
-                      <TableHead>Invoice Date</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map(inv => (
-                      <TableRow key={inv.id} data-testid={`invoice-row-${inv.id}`}>
-                        <TableCell className="font-medium text-sm">{inv.vendor}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[220px] truncate">
-                          {inv.description || inv.gmail_subject || "—"}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {seriesLabel(inv.series_tag)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {inv.currency !== "USD" ? (
-                            <span className="text-muted-foreground">
-                              {fmt(inv.amount, inv.currency)}
-                              <span className="block text-xs opacity-60">@ {(inv.fx_rate_to_usd ?? 1).toFixed(4)}</span>
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-medium">
-                          {fmt(inv.amount_usd ?? inv.amount)}
-                        </TableCell>
-                        <TableCell className="text-sm whitespace-nowrap">{fmtDate(inv.invoice_date)}</TableCell>
-                        <TableCell className="text-sm whitespace-nowrap">
-                          <span className={inv.status === "overdue" ? "text-red-600 font-medium" : ""}>
-                            {fmtDate(inv.due_date)}
-                          </span>
-                        </TableCell>
-                        <TableCell>{statusBadge(inv.status)}</TableCell>
-                        <TableCell className="text-right">
-                          {(inv.status === "unpaid" || inv.status === "overdue" || inv.status === "draft") && (
-                            <Dialog open={markPaidInvoice?.id === inv.id} onOpenChange={open => setMarkPaidInvoice(open ? inv : null)}>
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" data-testid={`button-mark-paid-${inv.id}`}>
-                                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Paid
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader><DialogTitle>Mark Invoice as Paid</DialogTitle></DialogHeader>
-                                <MarkPaidDialog invoice={inv} onClose={() => setMarkPaidInvoice(null)} />
-                              </DialogContent>
-                            </Dialog>
-                          )}
-                          {inv.status === "paid" && (
-                            <span className="text-xs text-green-600 flex items-center justify-end gap-1">
-                              <CheckCircle2 className="h-3.5 w-3.5" /> {fmtDate(inv.paid_date)}
-                            </span>
-                          )}
-                        </TableCell>
+              </CardHeader>
+              <CardContent className="px-4 pb-3 overflow-x-auto">
+                {isLoading ? (
+                  <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-8 w-full" />)}</div>
+                ) : filtered.length === 0 ? (
+                  <p className="text-sm text-center py-6" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    No invoices for this entity.{" "}
+                    <button className="underline" onClick={() => setShowUpload(true)}>Upload one?</button>
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {["Invoice Ref","Vendor / Supplier","Description","Date","Due Date","Ccy","Amount","USD","Status",""].map(h =>
+                          <TableHead key={h} className="text-xs py-2 px-2">{h}</TableHead>)}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── AP Aging ───────────────────────────────────────────────── */}
-        <TabsContent value="aging">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-primary" />
-                AP Aging Report
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loadingAging ? (
-                <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-              ) : aging.length === 0 ? (
-                <div className="py-10 text-center text-muted-foreground">
-                  <CheckCircle2 className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">No overdue invoices</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Vendor</TableHead>
-                      <TableHead>Invoice #</TableHead>
-                      <TableHead>Series</TableHead>
-                      <TableHead className="text-right">Source Amount</TableHead>
-                      <TableHead className="text-right">USD</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead className="text-right">Days Overdue</TableHead>
-                      <TableHead>Bucket</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {aging.map((row: any, i: number) => {
-                      const days = Number(row.days_overdue ?? 0);
-                      const bucket = days <= 0 ? "Current"
-                        : days <= 30 ? "1–30 days"
-                        : days <= 60 ? "31–60 days"
-                        : days <= 90 ? "61–90 days" : "90+ days";
-                      const bucketColor = days <= 0
-                        ? { bg: "hsl(142 71% 42% / 0.12)", color: "hsl(142 71% 55%)" }
-                        : days <= 30 ? { bg: "hsl(38 92% 52% / 0.12)", color: "hsl(38 92% 60%)" }
-                        : days <= 60 ? { bg: "hsl(25 95% 55% / 0.12)", color: "hsl(25 95% 55%)" }
-                        : { bg: "hsl(0 72% 55% / 0.12)", color: "hsl(0 72% 60%)" };
-                      return (
-                        <TableRow key={row.id ?? i}>
-                          <TableCell className="font-medium text-sm">{row.vendor ?? "—"}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{row.invoice_number ?? "—"}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{seriesLabel(row.series_tag)}</TableCell>
-                          <TableCell className="text-right text-sm">
-                            {row.currency && row.currency !== "USD" ? fmt(row.amount ?? 0, row.currency) : "—"}
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map((inv: any) => (
+                        <TableRow key={inv.id} className={inv.status === "void" ? "opacity-40" : ""}>
+                          <TableCell className="text-xs py-2 px-2 font-mono">{inv.invoice_ref || "—"}</TableCell>
+                          <TableCell className="text-xs py-2 px-2 font-medium">{inv.vendor || "—"}</TableCell>
+                          <TableCell className="text-xs py-2 px-2 max-w-xs truncate" title={inv.description}>{inv.description || "—"}</TableCell>
+                          <TableCell className="text-xs py-2 px-2 whitespace-nowrap">{fmtDate(inv.cost_date)}</TableCell>
+                          <TableCell className="text-xs py-2 px-2 whitespace-nowrap">{fmtDate(inv.due_date)}</TableCell>
+                          <TableCell className="text-xs py-2 px-2">{inv.currency || "USD"}</TableCell>
+                          <TableCell className="text-xs py-2 px-2 text-right font-medium">
+                            {inv.currency !== "USD" ? new Intl.NumberFormat("en-US",{minimumFractionDigits:2}).format(parseFloat(inv.amount||0)) : "—"}
                           </TableCell>
-                          <TableCell className="text-right text-sm font-medium">
-                            {fmt(row.amount_usd ?? row.amount ?? 0)}
-                          </TableCell>
-                          <TableCell className="text-sm whitespace-nowrap">{fmtDate(row.due_date)}</TableCell>
-                          <TableCell className="text-right text-sm font-mono">
-                            {days > 0 ? <span className="text-red-600 font-medium">{days}</span> : <span className="text-green-600">0</span>}
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                              style={{ background: bucketColor.bg, color: bucketColor.color }}>
-                              {bucket}
-                            </span>
+                          <TableCell className="text-xs py-2 px-2 text-right font-medium">{fmt2(parseFloat(inv.amount_usd||0))}</TableCell>
+                          <TableCell className="py-2 px-2">{statusBadge(inv.status)}</TableCell>
+                          <TableCell className="py-2 px-2 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {inv.status === "accrued" && (
+                                <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]"
+                                  onClick={() => patchMutation.mutate({ id: inv.id, status: "paid" })}
+                                  disabled={patchMutation.isPending}>
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />Paid
+                                </Button>
+                              )}
+                              {inv.status === "paid" && (
+                                <span className="text-[10px] text-green-600 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" />Paid
+                                </span>
+                              )}
+                              {inv.status !== "void" && (
+                                <Button size="sm" variant="ghost"
+                                  className="h-6 px-1.5 text-[10px] text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => setConfirmDeleteId(inv.id)}
+                                  disabled={deleteMutation.isPending}>
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                  <tfoot className="border-t-2">
-                    <tr>
-                      <td colSpan={4} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground">Total Outstanding</td>
-                      <td className="px-4 py-2.5 text-right font-mono font-semibold">
-                        {fmt(aging.reduce((s: number, r: any) => s + (r.amount_usd ?? r.amount ?? 0), 0))}
-                      </td>
-                      <td colSpan={3} />
-                    </tr>
-                  </tfoot>
-                </Table>
-              )}
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ))}
+
+        <TabsContent value="summary" className="mt-4">
+          <Card style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="text-sm font-semibold" style={{ color: "hsl(var(--foreground))" }}>Delaware Group — AP Summary</CardTitle>
+              <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>All entities · non-voided · USD</p>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {["Entity","Open Invoices","Total Billed (USD)","Outstanding (USD)","Paid (USD)"].map(h =>
+                      <TableHead key={h} className="text-xs py-2">{h}</TableHead>)}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summaryByEntity.map(row => (
+                    <TableRow key={row.label}>
+                      <TableCell className="text-sm py-2 font-medium">{row.label}</TableCell>
+                      <TableCell className="text-sm py-2 text-center">{row.count}</TableCell>
+                      <TableCell className="text-sm py-2 text-right">{fmt2(row.total)}</TableCell>
+                      <TableCell className="text-sm py-2 text-right">{fmt2(row.outstanding)}</TableCell>
+                      <TableCell className="text-sm py-2 text-right">{fmt2(row.paid)}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="font-bold border-t-2" style={{ borderColor: "hsl(var(--border))" }}>
+                    <TableCell className="py-2">Total</TableCell>
+                    <TableCell className="py-2 text-center">{summaryByEntity.reduce((s,r) => s+r.count,0)}</TableCell>
+                    <TableCell className="py-2 text-right">{fmt2(summaryByEntity.reduce((s,r)=>s+r.total,0))}</TableCell>
+                    <TableCell className="py-2 text-right">{fmt2(summaryByEntity.reduce((s,r)=>s+r.outstanding,0))}</TableCell>
+                    <TableCell className="py-2 text-right">{fmt2(summaryByEntity.reduce((s,r)=>s+r.paid,0))}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showUpload} onOpenChange={setShowUpload}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="text-sm">Upload Invoice — {currentEntityLabel}</DialogTitle></DialogHeader>
+          <InvoiceUploadPanel entityId={activeEntity} onDone={() => {
+            setShowUpload(false); invalidate();
+          }} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!confirmDeleteId} onOpenChange={open => { if (!open) setConfirmDeleteId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Void Invoice?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Marks the invoice as <strong>void</strong> and removes it from all totals. The record is kept for audit.
+          </p>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleteMutation.isPending}
+              onClick={() => confirmDeleteId && deleteMutation.mutate(confirmDeleteId)}>
+              {deleteMutation.isPending ? "Voiding…" : "Void Invoice"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
