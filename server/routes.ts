@@ -3393,31 +3393,46 @@ Founders Capital`;
   app.get("/api/yc-deals/:dealName/lp-breakdown", async (req, res) => {
     try {
       const dealName = decodeURIComponent(req.params.dealName);
-      // Fetch holdings for this deal, joined with investor names
-      const { data: holdings, error } = await supabase
+
+      // Step 1: fetch holdings for this deal
+      const { data: holdings, error: hErr } = await supabase
         .from("yc_holdings")
-        .select("id, investor_id, investment_amount_usd, currency, moic, closing_date, investors ( full_name, email, investor_type )")
-        .eq("deal_name", dealName)
-        .order("investment_amount_usd", { ascending: false });
-      if (error) return res.status(500).json({ error: error.message });
-      const rows = (holdings ?? []).map((h: any) => ({
-        investor_id:          h.investor_id,
-        full_name:            h.investors?.full_name ?? "Unknown",
-        email:                h.investors?.email ?? null,
-        investor_type:        h.investors?.investor_type ?? null,
-        investment_amount_usd: Number(h.investment_amount_usd) || 0,
-        currency:             h.currency ?? "USD",
-        moic:                 Number(h.moic) || 1,
-      }));
-      // Deduplicate by investor_id (in case of duplicate rows from sync)
+        .select("investor_id, investment_amount_usd, currency, moic")
+        .eq("deal_name", dealName);
+      if (hErr) return res.status(500).json({ error: hErr.message });
+
+      // Deduplicate by investor_id
       const seen = new Set<string>();
-      const deduped = rows.filter((r: any) => {
-        if (seen.has(r.investor_id)) return false;
-        seen.add(r.investor_id);
+      const deduped = (holdings ?? []).filter((h: any) => {
+        if (seen.has(h.investor_id)) return false;
+        seen.add(h.investor_id);
         return true;
       });
-      const total_usd = deduped.reduce((s: number, r: any) => s + r.investment_amount_usd, 0);
-      res.json({ deal_name: dealName, lp_count: deduped.length, total_usd, lps: deduped });
+
+      // Step 2: fetch investor names in one query
+      const investorIds = Array.from(seen);
+      const { data: investors, error: iErr } = await supabase
+        .from("investors")
+        .select("id, full_name, email, investor_type")
+        .in("id", investorIds);
+      if (iErr) return res.status(500).json({ error: iErr.message });
+
+      const investorMap = new Map((investors ?? []).map((i: any) => [i.id, i]));
+
+      const lps = deduped
+        .map((h: any) => ({
+          investor_id:           h.investor_id,
+          full_name:             investorMap.get(h.investor_id)?.full_name ?? "Unknown",
+          email:                 investorMap.get(h.investor_id)?.email ?? null,
+          investor_type:         investorMap.get(h.investor_id)?.investor_type ?? null,
+          investment_amount_usd: Number(h.investment_amount_usd) || 0,
+          currency:              h.currency ?? "USD",
+          moic:                  Number(h.moic) || 1,
+        }))
+        .sort((a: any, b: any) => b.investment_amount_usd - a.investment_amount_usd);
+
+      const total_usd = lps.reduce((s: number, r: any) => s + r.investment_amount_usd, 0);
+      res.json({ deal_name: dealName, lp_count: lps.length, total_usd, lps });
     } catch (err: any) {
       res.status(500).json({ error: err.message ?? "Unknown error" });
     }
