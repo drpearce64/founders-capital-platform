@@ -33,8 +33,10 @@ interface VectorLPBreakdownData {
   entity_name: string;
   short_code: string;
   lp_count: number;
-  total_committed: number;
-  total_called: number;
+  total_committed: number;       // entity-level authoritative total (from Airtable sync)
+  total_called: number;          // entity-level funds_received
+  total_committed_rows: number;  // sum of investor_commitments rows (may be partial)
+  reconciled: boolean;           // true if rows match entity total within $1
   lps: VectorLPRow[];
 }
 
@@ -48,8 +50,10 @@ function VectorLPBreakdownSheet({ entity, onClose }: { entity: any | null; onClo
 
   const seriesLabel = entity?.short_code?.replace("FC-", "") ?? "";
   const investmentName = entity?.investments?.[0]?.company_name ?? null;
-  const totalCommitted = data?.total_committed ?? 0;
+  const totalCommitted = data?.total_committed ?? 0;          // entity-level (authoritative)
+  const totalCommittedRows = data?.total_committed_rows ?? 0; // row sum (may be partial)
   const totalCalled = data?.total_called ?? 0;
+  const reconciled = data?.reconciled ?? true;
   const pctCalled = totalCommitted > 0 ? ((totalCalled / totalCommitted) * 100).toFixed(0) : "0";
 
   return (
@@ -116,7 +120,8 @@ function VectorLPBreakdownSheet({ entity, onClose }: { entity: any | null; onClo
                 </thead>
                 <tbody>
                   {data.lps.map((lp, idx) => {
-                    const sharePct = totalCommitted > 0 ? (lp.committed_amount / totalCommitted) * 100 : 0;
+                    // Use row-sum as denominator so individual LP rows sum to 100% of known records
+                    const sharePct = totalCommittedRows > 0 ? (lp.committed_amount / totalCommittedRows) * 100 : 0;
                     const isFullyCalled = lp.called_amount >= lp.committed_amount * 0.99;
                     return (
                       <tr
@@ -161,11 +166,25 @@ function VectorLPBreakdownSheet({ entity, onClose }: { entity: any | null; onClo
                     <td className="px-3 py-2 text-right font-semibold font-mono" style={{ color: "hsl(142 70% 45%)" }}>
                       ${totalCalled.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>100%</td>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      {reconciled ? "100%" : "—"}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
             </div>
+
+            {/* Partial sync notice — shown when commitment rows don't cover the full entity total */}
+            {!reconciled && data.lps.length > 0 && (
+              <div className="mt-3 px-3 py-2 rounded text-xs flex items-start gap-2" style={{ background: "rgba(245,158,11,0.1)", color: "hsl(38 92% 50%)" }}>
+                <span style={{ flexShrink: 0 }}>⚠</span>
+                <span>
+                  Showing {data.lp_count} LP{data.lp_count !== 1 ? "s" : ""} from commitment records
+                  {" ("}{"$"}{totalCommittedRows.toLocaleString("en-US", { maximumFractionDigits: 0 })}{" of full SPV total $"}{totalCommitted.toLocaleString("en-US", { maximumFractionDigits: 0 })}{")"}.
+                  Full LP register data pending Airtable sync.
+                </span>
+              </div>
+            )}
 
             {data.lps.length === 0 && (
               <p className="text-xs mt-4 text-center" style={{ color: "hsl(var(--muted-foreground))" }}>

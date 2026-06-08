@@ -3483,10 +3483,10 @@ Founders Capital`;
     try {
       const { entityId } = req.params;
 
-      // Fetch the entity to verify it exists and get its name
+      // Fetch the entity — include authoritative fund-level totals from Airtable sync
       const { data: entityArr, error: eErr } = await supabase
         .from("entities")
-        .select("id, name, short_code")
+        .select("id, name, short_code, vehicle_subscription_amount, funds_received, final_investment_usd")
         .eq("id", entityId);
       if (eErr) return res.status(500).json({ error: eErr.message });
       const entity = (entityArr ?? [])[0];
@@ -3529,8 +3529,21 @@ Founders Capital`;
         };
       });
 
-      const total_committed = lps.reduce((s: number, r: any) => s + r.committed_amount, 0);
+      const total_committed_rows = lps.reduce((s: number, r: any) => s + r.committed_amount, 0);
       const total_called = lps.reduce((s: number, r: any) => s + r.called_amount, 0);
+
+      // Authoritative entity-level totals from Airtable sync (preferred over summing rows)
+      const entity_funds_received = Number(entity.funds_received) || 0;
+      const entity_vehicle_subscription = Number(entity.vehicle_subscription_amount) || 0;
+      const entity_final_investment = Number(entity.final_investment_usd) || 0;
+
+      // Use entity-level total as the authoritative total; fall back to summing rows
+      const total_committed = entity_vehicle_subscription > 0 ? entity_vehicle_subscription
+        : entity_funds_received > 0 ? entity_funds_received
+        : total_committed_rows;
+
+      // Flag if commitment rows don't reconcile with entity total (sync incomplete)
+      const reconciled = Math.abs(total_committed_rows - total_committed) < 1;
 
       res.json({
         entity_id: entityId,
@@ -3538,7 +3551,9 @@ Founders Capital`;
         short_code: entity.short_code,
         lp_count: lps.length,
         total_committed,
-        total_called,
+        total_called: entity_funds_received > 0 ? entity_funds_received : total_called,
+        total_committed_rows,
+        reconciled,
         lps,
         source: "investor_commitments",
       });
