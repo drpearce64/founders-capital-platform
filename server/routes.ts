@@ -1463,7 +1463,7 @@ Founders Capital`;
         currency:          row.currency      || "USD",
         amount:            row.amount        ?? 0,
         fx_rate_to_usd:    row.fx_rate_to_usd ?? 1,
-        amount_usd:        row.amount_usd    ?? (row.amount ?? 0) * (row.fx_rate_to_usd ?? 1),
+        // amount_usd is a generated column (amount * fx_rate_to_usd) — DO NOT include in upsert
         status:            row.status        || "accrued",
         paid_date:         row.paid_date     || null,
         payment_reference: row.payment_reference || null,
@@ -1486,7 +1486,7 @@ Founders Capital`;
             .select("id")
             .eq("entity_id", row.entity_id)
             .eq("vendor", row.vendor || "")
-            .eq("amount_usd", payload.amount_usd)
+            .eq("amount", payload.amount)
             .limit(1);
           if (existing && existing.length > 0) { skipped++; continue; }
           const { error } = await supabase.from("entity_costs").insert(payload);
@@ -2739,7 +2739,7 @@ Founders Capital`;
       "status", "paid_date", "payment_reference", "notes",
       "fx_rate_to_usd", "description", "category",
       "invoice_ref", "vendor", "due_date", "drive_link",
-      "amount", "amount_usd", "currency", "cost_date",
+      "amount", "currency", "cost_date",
     ];
     const payload: Record<string, any> = {};
     for (const k of allowed) {
