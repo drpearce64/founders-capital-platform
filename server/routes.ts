@@ -2486,7 +2486,7 @@ Founders Capital`;
   app.get("/api/entity-costs", async (req, res) => {
     let query = supabase
       .from("entity_costs")
-      .select("*, entities(short_code, name)")
+      .select("*")
       .order("cost_date", { ascending: false });
     if (req.query.entity_id) {
       query = query.eq("entity_id", req.query.entity_id as string);
