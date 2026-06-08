@@ -28,7 +28,7 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{ imported: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [meta, setMeta] = useState({ entity_id: CAYMAN_ENTITIES[0].value, vendor: "", currency: "USD", notes: "" });
+  const [meta, setMeta] = useState({ entity_id: CAYMAN_ENTITIES[0].value, vendor: "", currency: "USD", notes: "", category: "other" });
   const { toast } = useToast();
 
   const handleDrop = (e: React.DragEvent) => {
@@ -47,6 +47,7 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
       if (meta.vendor) form.append("vendor", meta.vendor);
       if (meta.currency) form.append("currency", meta.currency);
       if (meta.notes) form.append("notes", meta.notes);
+      form.append("category", meta.category || "other");
       const res = await fetch("/api/entity-costs/upload", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
@@ -135,10 +136,25 @@ function InvoiceUploadPanel({ onUploaded }: { onUploaded: () => void }) {
                 </select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Notes</Label>
-                <Input placeholder="Optional" value={meta.notes}
-                  onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} className="text-sm" />
+                <Label className="text-xs">Category</Label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={meta.category}
+                  onChange={e => setMeta(m => ({ ...m, category: e.target.value }))}
+                >
+                  <option value="legal">Legal</option>
+                  <option value="fund_admin">Fund Admin</option>
+                  <option value="audit">Audit</option>
+                  <option value="tax">Tax</option>
+                  <option value="management">Management</option>
+                  <option value="other">Other</option>
+                </select>
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Notes</Label>
+              <Input placeholder="Optional" value={meta.notes}
+                onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} className="text-sm" />
             </div>
             <Button
               className="w-full gap-2"
