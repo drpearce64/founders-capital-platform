@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Search, AlertTriangle, XCircle, CheckCircle, TrendingDown, ChevronDown } from "lucide-react";
+import { Search, AlertTriangle, XCircle, CheckCircle, TrendingDown, ChevronDown, Users } from "lucide-react";
 import {
   TrendingUp, DollarSign, Building2, ExternalLink, Layers, Zap, ArrowUpRight,
 } from "lucide-react";
@@ -581,6 +581,152 @@ function YCDrillContent({ drillKey, deals }: { drillKey: YCDrillKey; deals: YCDe
   return null;
 }
 
+// ── LP Breakdown Sheet ──────────────────────────────────────────────────────
+interface LPRow {
+  investor_id: string;
+  full_name: string;
+  email: string | null;
+  investor_type: string | null;
+  investment_amount_usd: number;
+  currency: string;
+  moic: number;
+}
+
+interface LPBreakdownData {
+  deal_name: string;
+  lp_count: number;
+  total_usd: number;
+  lps: LPRow[];
+}
+
+function LPBreakdownSheet({ deal, onClose }: { deal: YCDeal | null; onClose: () => void }) {
+  const encodedName = deal ? encodeURIComponent(deal.name) : "";
+  const { data, isLoading, error } = useQuery<LPBreakdownData>({
+    queryKey: ["/api/yc-deals", encodedName, "lp-breakdown"],
+    queryFn: () => apiRequest("GET", `/api/yc-deals/${encodedName}/lp-breakdown`).then(r => r.json()),
+    enabled: !!deal,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const companyName = deal?.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim() ?? "";
+  const totalFromSheet = data?.total_usd ?? 0;
+
+  return (
+    <Sheet open={!!deal} onOpenChange={open => { if (!open) onClose(); }}>
+      <SheetContent side="right" className="w-[520px] sm:max-w-[520px] overflow-y-auto">
+        <SheetHeader className="mb-5">
+          <div className="flex items-center gap-2">
+            <Users size={16} style={{ color: "hsl(231 70% 65%)" }} />
+            <SheetTitle className="text-base">{companyName} — LP Breakdown</SheetTitle>
+          </div>
+          {deal && (
+            <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+              {deal.name} · {deal.batch} · Closed {deal.closing_date?.slice(0, 10) ?? "—"}
+            </p>
+          )}
+        </SheetHeader>
+
+        {isLoading && (
+          <div className="flex items-center justify-center h-32 text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+            Loading LP data…
+          </div>
+        )}
+        {error && (
+          <div className="text-sm p-4 rounded" style={{ background: "rgba(198,40,40,0.1)", color: "#ef5350" }}>
+            Failed to load LP data
+          </div>
+        )}
+
+        {data && !isLoading && (
+          <>
+            {/* Summary KPIs */}
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="rounded-lg p-3" style={{ background: "hsl(var(--muted))" }}>
+                <p className="text-xs mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>LP Count</p>
+                <p className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>{data.lp_count}</p>
+              </div>
+              <div className="rounded-lg p-3" style={{ background: "hsl(var(--muted))" }}>
+                <p className="text-xs mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Total SPV Size</p>
+                <p className="text-xl font-bold" style={{ color: "hsl(var(--foreground))" }}>
+                  ${totalFromSheet.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+              </div>
+            </div>
+
+            {/* LP table */}
+            <div className="rounded-lg overflow-hidden border" style={{ borderColor: "hsl(var(--border))" }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: "hsl(var(--muted))", borderBottom: "1px solid hsl(var(--border))" }}>
+                    <th className="px-3 py-2 text-left font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>#</th>
+                    <th className="px-3 py-2 text-left font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>LP Name</th>
+                    <th className="px-3 py-2 text-right font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>Amount (USD)</th>
+                    <th className="px-3 py-2 text-right font-medium" style={{ color: "hsl(var(--muted-foreground))" }}>% of SPV</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.lps.map((lp, idx) => {
+                    const pct = totalFromSheet > 0 ? (lp.investment_amount_usd / totalFromSheet) * 100 : 0;
+                    return (
+                      <tr
+                        key={lp.investor_id}
+                        className="border-b"
+                        style={{
+                          borderColor: "hsl(var(--border))",
+                          background: idx % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.3)",
+                        }}
+                      >
+                        <td className="px-3 py-2 font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>{idx + 1}</td>
+                        <td className="px-3 py-2">
+                          <p className="font-medium" style={{ color: "hsl(var(--foreground))" }}>{lp.full_name}</p>
+                          {lp.email && (
+                            <p className="text-[10px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{lp.email}</p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: "hsl(var(--foreground))" }}>
+                          ${lp.investment_amount_usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>
+                          {pct.toFixed(1)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: "hsl(var(--muted))", borderTop: "1px solid hsl(var(--border))" }}>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 font-semibold" style={{ color: "hsl(var(--foreground))" }}>
+                      {data.lp_count} LP{data.lp_count !== 1 ? "s" : ""}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold font-mono" style={{ color: "hsl(var(--foreground))" }}>
+                      ${totalFromSheet.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>100%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {deal?.fc_investment != null && deal.fc_investment > 0 && (
+              <p className="text-xs mt-3" style={{ color: "hsl(var(--muted-foreground))" }}>
+                FC deployed: <span className="font-medium" style={{ color: "hsl(var(--foreground))" }}>
+                  ${deal.fc_investment.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </span>
+                {totalFromSheet > 0 && (
+                  <span className="ml-1">
+                    ({((deal.fc_investment / totalFromSheet) * 100).toFixed(1)}% of SPV)
+                  </span>
+                )}
+              </p>
+            )}
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function YCDashboard() {
   const qc = useQueryClient();
@@ -592,6 +738,7 @@ export default function YCDashboard() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [activeDrill, setActiveDrill] = useState<YCDrillKey | null>(null);
   const [valuationInv, setValuationInv] = useState<any | null>(null);
+  const [lpDeal, setLpDeal] = useState<YCDeal | null>(null);
 
   // Load all investments for YC name-matching
   const { data: allInvestments = [] } = useQuery<any[]>({
@@ -1057,9 +1204,14 @@ export default function YCDashboard() {
                       {/* Company */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-xs" style={{ color: "hsl(var(--foreground))" }}>
+                          <button
+                            onClick={() => setLpDeal(deal)}
+                            className="font-medium text-xs text-left hover:underline"
+                            style={{ color: "hsl(var(--foreground))" }}
+                            title="View LP breakdown"
+                          >
                             {deal.name.replace(/\s*\(YC [A-Z][0-9]+\)\s*/g, "").trim()}
-                          </span>
+                          </button>
                           {deal.url && (
                             <a
                               href={deal.url.trim()}
@@ -1073,6 +1225,14 @@ export default function YCDashboard() {
                               <ExternalLink size={11} />
                             </a>
                           )}
+                          <button
+                            onClick={() => setLpDeal(deal)}
+                            className="flex-shrink-0 hover:opacity-70 transition-opacity"
+                            style={{ color: "hsl(var(--muted-foreground))" }}
+                            title="View LP breakdown"
+                          >
+                            <Users size={11} />
+                          </button>
                         </div>
                         {deal.description && (
                           <div
@@ -1219,6 +1379,9 @@ export default function YCDashboard() {
         </div>
       </div>
       )}
+
+    {/* LP Breakdown Sheet */}
+    <LPBreakdownSheet deal={lpDeal} onClose={() => setLpDeal(null)} />
 
     {/* Valuation Mark Modal */}
     <ValuationMarkModal

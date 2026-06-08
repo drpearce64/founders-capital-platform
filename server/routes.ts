@@ -3389,6 +3389,40 @@ Founders Capital`;
     }
   });
 
+  // GET /api/yc-deals/:dealName/lp-breakdown — LP breakdown for a single YC deal
+  app.get("/api/yc-deals/:dealName/lp-breakdown", async (req, res) => {
+    try {
+      const dealName = decodeURIComponent(req.params.dealName);
+      // Fetch holdings for this deal, joined with investor names
+      const { data: holdings, error } = await supabase
+        .from("yc_holdings")
+        .select("id, investor_id, investment_amount_usd, currency, moic, closing_date, investors ( full_name, email, investor_type )")
+        .eq("deal_name", dealName)
+        .order("investment_amount_usd", { ascending: false });
+      if (error) return res.status(500).json({ error: error.message });
+      const rows = (holdings ?? []).map((h: any) => ({
+        investor_id:          h.investor_id,
+        full_name:            h.investors?.full_name ?? "Unknown",
+        email:                h.investors?.email ?? null,
+        investor_type:        h.investors?.investor_type ?? null,
+        investment_amount_usd: Number(h.investment_amount_usd) || 0,
+        currency:             h.currency ?? "USD",
+        moic:                 Number(h.moic) || 1,
+      }));
+      // Deduplicate by investor_id (in case of duplicate rows from sync)
+      const seen = new Set<string>();
+      const deduped = rows.filter((r: any) => {
+        if (seen.has(r.investor_id)) return false;
+        seen.add(r.investor_id);
+        return true;
+      });
+      const total_usd = deduped.reduce((s: number, r: any) => s + r.investment_amount_usd, 0);
+      res.json({ deal_name: dealName, lp_count: deduped.length, total_usd, lps: deduped });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // GET /api/yc-deals — read from Supabase yc_deals table (seeded from Airtable)
   app.get("/api/yc-deals", async (_req, res) => {
     try {
