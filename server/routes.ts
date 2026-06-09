@@ -3583,6 +3583,89 @@ Founders Capital`;
     }
   });
 
+  // GET /api/lp-analytics — LP engagement stats + top 10 for Portfolio Summary
+  app.get("/api/lp-analytics", async (_req, res) => {
+    try {
+      // Fetch all active commitments
+      const { data: commitments, error: cErr } = await supabase
+        .from("investor_commitments")
+        .select("investor_id,committed_amount,called_amount")
+        .eq("status", "active");
+      if (cErr) throw cErr;
+
+      // Fetch all investors
+      const { data: investors, error: iErr } = await supabase
+        .from("investors")
+        .select("id,full_name,email")
+        .is("archived_at", null);
+      if (iErr) throw iErr;
+
+      const investorMap: Record<string, { full_name: string | null; email: string | null }> = {};
+      for (const inv of (investors ?? [])) {
+        investorMap[inv.id] = { full_name: inv.full_name, email: inv.email };
+      }
+
+      // Aggregate by investor_id
+      const byId: Record<string, { name: string; committed: number; called: number; deals: number }> = {};
+      for (const c of (commitments ?? [])) {
+        if (!byId[c.investor_id]) {
+          const inv = investorMap[c.investor_id] ?? {};
+          byId[c.investor_id] = {
+            name: inv.full_name || inv.email || c.investor_id.slice(0, 8),
+            committed: 0,
+            called: 0,
+            deals: 0,
+          };
+        }
+        byId[c.investor_id].committed += Number(c.committed_amount ?? 0);
+        byId[c.investor_id].called += Number(c.called_amount ?? 0);
+        byId[c.investor_id].deals += 1;
+      }
+
+      // Merge duplicates by normalised name
+      const byName: Record<string, { name: string; committed: number; called: number; deals: number }> = {};
+      for (const v of Object.values(byId)) {
+        const key = v.name.trim().toLowerCase();
+        if (!byName[key]) byName[key] = { name: v.name, committed: 0, called: 0, deals: 0 };
+        byName[key].committed += v.committed;
+        byName[key].called += v.called;
+        byName[key].deals += v.deals;
+      }
+
+      const all = Object.values(byName);
+      const totalLPs = all.length;
+      const totalCommitted = all.reduce((s, v) => s + v.committed, 0);
+      const gt1  = all.filter(v => v.deals > 1).length;
+      const gt5  = all.filter(v => v.deals > 5).length;
+      const gt10 = all.filter(v => v.deals > 10).length;
+
+      const top10 = [...all]
+        .sort((a, b) => b.committed - a.committed)
+        .slice(0, 10)
+        .map(v => ({
+          name: v.name,
+          committed: v.committed,
+          called: v.called,
+          deals: v.deals,
+          pct: totalCommitted > 0 ? (v.committed / totalCommitted) * 100 : 0,
+        }));
+
+      const top10Total = top10.reduce((s, v) => s + v.committed, 0);
+      const top10Pct   = totalCommitted > 0 ? (top10Total / totalCommitted) * 100 : 0;
+
+      res.json({
+        total_lps: totalLPs,
+        total_committed: totalCommitted,
+        gt1, gt5, gt10,
+        top10,
+        top10_total: top10Total,
+        top10_pct: top10Pct,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // GET /api/statutory-filings/:entityId — all filings for an entity
   app.get("/api/statutory-filings/:entityId", async (req, res) => {
     try {

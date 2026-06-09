@@ -11,8 +11,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import {
   TrendingUp, DollarSign, BarChart3, AlertTriangle,
-  Activity, CheckCircle2, XCircle, Clock, ArrowUpRight,
-  Zap, PieChart,
+  Activity, CheckCircle2, XCircle, ArrowUpRight,
+  Zap, PieChart, Users, Star,
 } from "lucide-react";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -130,6 +130,19 @@ export default function PortfolioSummary() {
   const { data: ycData, isLoading: ycLoading } = useQuery<any>({
     queryKey: ["/api/yc-deals"],
     queryFn: () => apiRequest("GET", "/api/yc-deals").then(r => r.json()),
+  });
+
+  // ── Fetch LP analytics ───────────────────────────────────────────────────
+  const { data: lpData } = useQuery<{
+    total_lps: number;
+    total_committed: number;
+    gt1: number; gt5: number; gt10: number;
+    top10: { name: string; committed: number; called: number; deals: number; pct: number }[];
+    top10_total: number;
+    top10_pct: number;
+  }>({
+    queryKey: ["/api/lp-analytics"],
+    queryFn: () => apiRequest("GET", "/api/lp-analytics").then(r => r.json()),
   });
 
   const loading = invLoading || ycLoading;
@@ -630,6 +643,209 @@ export default function PortfolioSummary() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* ── Section 6: LP Intelligence ──────────────────────────────── */}
+        <div>
+          <SectionLabel>LP Intelligence</SectionLabel>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            {/* LP engagement stat tiles */}
+            <div className="rounded-xl border bg-white p-6" style={{ borderColor: BORDER }}>
+              <div className="flex items-center gap-2 mb-5">
+                <Users size={15} style={{ color: ACCENT }} />
+                <span className="text-sm font-semibold" style={{ color: TEXT }}>LP Base</span>
+              </div>
+              <div className="space-y-4">
+                {[
+                  {
+                    label: "Total LPs",
+                    value: lpData?.total_lps ?? "—",
+                    sub: lpData ? fmt(lpData.total_committed, true) + " total committed" : undefined,
+                    accent: ACCENT,
+                    bold: true,
+                  },
+                  {
+                    label: "Multi-deal LPs",
+                    sub: "invested in > 1 Series",
+                    value: lpData?.gt1 ?? "—",
+                    accent: GREEN,
+                    bold: false,
+                  },
+                  {
+                    label: "Highly engaged",
+                    sub: "invested in > 5 Series",
+                    value: lpData?.gt5 ?? "—",
+                    accent: GREEN,
+                    bold: false,
+                  },
+                  {
+                    label: "Power LPs",
+                    sub: "invested in > 10 Series",
+                    value: lpData?.gt10 ?? "—",
+                    accent: AMBER,
+                    bold: false,
+                  },
+                ].map(row => (
+                  <div
+                    key={row.label}
+                    className="flex items-center justify-between py-2.5 border-b last:border-0"
+                    style={{ borderColor: BORDER }}
+                  >
+                    <div>
+                      <p className="text-sm" style={{ color: TEXT }}>{row.label}</p>
+                      {row.sub && <p className="text-xs mt-0.5" style={{ color: MUTED }}>{row.sub}</p>}
+                    </div>
+                    <span
+                      className="text-xl font-bold font-mono"
+                      style={{ color: row.bold ? row.accent : TEXT }}
+                    >
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Top 10 LP table */}
+            <div className="md:col-span-2 rounded-xl border bg-white overflow-hidden" style={{ borderColor: BORDER }}>
+              <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: BORDER }}>
+                <div className="flex items-center gap-2">
+                  <Star size={14} style={{ color: AMBER }} />
+                  <span className="text-sm font-semibold" style={{ color: TEXT }}>Top 10 LPs by Committed Capital</span>
+                </div>
+                {lpData && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs" style={{ color: MUTED }}>Top 10 total:</span>
+                    <span className="text-xs font-semibold font-mono" style={{ color: TEXT }}>{fmt(lpData.top10_total)}</span>
+                    <span
+                      className="text-xs font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: ACCENT + "18", color: ACCENT }}
+                    >
+                      {lpData.top10_pct.toFixed(1)}% of LP base
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {!lpData ? (
+                <div className="p-8 text-center text-sm" style={{ color: MUTED }}>Loading LP data…</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: "hsl(var(--muted) / 0.4)", borderBottom: `1px solid ${BORDER}` }}>
+                      {["#", "LP Name", "Committed", "Called", "Series", "Share"].map((h, i) => (
+                        <th
+                          key={h}
+                          className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wide ${
+                            i === 0 ? "text-left w-6" :
+                            i === 1 ? "text-left" :
+                            "text-right"
+                          }`}
+                          style={{ color: MUTED }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lpData.top10.map((lp, idx) => (
+                      <tr
+                        key={lp.name}
+                        className="border-b last:border-0 transition-colors hover:bg-black/[0.015]"
+                        style={{ borderColor: BORDER }}
+                      >
+                        {/* Rank */}
+                        <td className="px-4 py-3 text-xs font-mono" style={{ color: MUTED }}>
+                          {idx + 1}
+                        </td>
+
+                        {/* Name */}
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {idx < 3 && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{ background: idx === 0 ? AMBER : idx === 1 ? MUTED : "#94A3B8" }}
+                              />
+                            )}
+                            <span className="font-medium" style={{ color: TEXT }}>{lp.name}</span>
+                          </div>
+                        </td>
+
+                        {/* Committed */}
+                        <td className="px-4 py-3 text-right font-mono text-sm font-semibold" style={{ color: TEXT }}>
+                          {fmt(lp.committed)}
+                        </td>
+
+                        {/* Called */}
+                        <td className="px-4 py-3 text-right font-mono text-sm" style={{ color: MUTED }}>
+                          {fmt(lp.called)}
+                        </td>
+
+                        {/* Series count */}
+                        <td className="px-4 py-3 text-right">
+                          <span
+                            className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{
+                              background: lp.deals > 2 ? GREEN + "18" : ACCENT + "12",
+                              color:      lp.deals > 2 ? GREEN       : ACCENT,
+                            }}
+                          >
+                            {lp.deals}
+                          </span>
+                        </td>
+
+                        {/* Share bar */}
+                        <td className="px-4 py-3" style={{ minWidth: 100 }}>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))" }}>
+                              <div
+                                className="h-full rounded-full"
+                                style={{ width: `${Math.min(lp.pct, 100)}%`, background: idx < 3 ? ACCENT : GREEN }}
+                              />
+                            </div>
+                            <span className="text-xs font-mono w-10 text-right flex-shrink-0" style={{ color: MUTED }}>
+                              {lp.pct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {/* Total row */}
+                    <tr style={{ background: "hsl(var(--muted) / 0.35)", borderTop: `2px solid ${BORDER}` }}>
+                      <td colSpan={2} className="px-4 py-2.5 text-xs font-semibold" style={{ color: TEXT }}>
+                        Top 10 Total
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold" style={{ color: TEXT }}>
+                        {fmt(lpData.top10_total)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: MUTED }}>
+                        {fmt(lpData.top10.reduce((s, v) => s + v.called, 0))}
+                      </td>
+                      <td />
+                      <td className="px-4 py-2.5 text-right">
+                        <span className="text-xs font-bold" style={{ color: ACCENT }}>
+                          {lpData.top10_pct.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+
+              <div
+                className="px-6 py-2.5 text-xs border-t"
+                style={{ borderColor: BORDER, color: MUTED, background: "hsl(var(--muted) / 0.2)" }}
+              >
+                Committed amounts in USD. Duplicate investor records are merged by name — run the LP Duplicate Scan to resolve underlying data.
+              </div>
+            </div>
+
           </div>
         </div>
 
