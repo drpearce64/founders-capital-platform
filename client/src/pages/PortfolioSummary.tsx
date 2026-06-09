@@ -1,40 +1,43 @@
 /**
- * Portfolio Summary — 6th dashboard view
- * Unified cost vs fair value across Delaware, YC and Other Investments.
- * Each row has a "Mark" button that opens ValuationMarkModal.
+ * Portfolio Summary — Executive GP Overview
+ * Fund-level performance metrics, allocation breakdown, health status,
+ * valuation hygiene, and recent activity. No per-position detail table —
+ * that lives on each jurisdiction dashboard.
  */
 
-import { useState, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 import {
   TrendingUp, DollarSign, BarChart3, AlertTriangle,
-  ChevronDown, ChevronRight, ExternalLink, Clock, X,
+  Activity, CheckCircle2, XCircle, Clock, ArrowUpRight,
+  Zap, PieChart,
 } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ValuationMarkModal } from "@/components/ValuationMarkModal";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
 
-const BG   = "#F5F3EF";
-const TEXT = "#1A1209";
-const MUTED = "hsl(var(--muted-foreground))";
+const BG     = "#F5F3EF";
+const TEXT   = "#1A1209";
+const MUTED  = "hsl(var(--muted-foreground))";
 const BORDER = "hsl(var(--border))";
 const ACCENT = "#3B5BDB";
+const GREEN  = "#0CA678";
+const RED    = "#FA5252";
+const AMBER  = "#E67700";
 
-function fmtUsd(n: number | null | undefined, compact = false): string {
-  const v = Number(n ?? 0);
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmt(n: number, compact = false): string {
   if (compact) {
-    if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}m`;
-    if (Math.abs(v) >= 1_000)     return `$${(v / 1_000).toFixed(0)}k`;
-    return `$${v.toFixed(0)}`;
+    if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}m`;
+    if (Math.abs(n) >= 1_000)     return `$${(n / 1_000).toFixed(0)}k`;
+    return `$${n.toFixed(0)}`;
   }
-  return new Intl.NumberFormat("en-US", {
-    style: "currency", currency: "USD", maximumFractionDigits: 0,
-  }).format(v);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 }
 
-function fmtDate(d: string | null | undefined): string {
+function fmtDate(d: string | null | undefined) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" });
 }
@@ -44,262 +47,86 @@ function daysSince(d: string | null | undefined): number | null {
   return Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000);
 }
 
-function isStale(fv_date: string | null | undefined, cost: number | null): boolean {
-  if (!fv_date) return !!cost && cost > 0;
-  const days = daysSince(fv_date);
-  return days !== null && days > 90;
+function isStale(fv_date: string | null | undefined, cost: number): boolean {
+  if (!fv_date) return cost > 0;
+  const d = daysSince(fv_date);
+  return d !== null && d > 90;
 }
 
-// ── KPI Card ─────────────────────────────────────────────────────────────────
+// ── Sub-components ───────────────────────────────────────────────────────────
 
-function KpiCard({
-  label, value, sub, icon: Icon, accent = ACCENT,
-  onClick, active = false,
+function MetricCard({
+  label, value, sub, icon: Icon, accent = ACCENT, note,
 }: {
-  label: string; value: string; sub?: string;
-  icon: any; accent?: string;
-  onClick?: () => void; active?: boolean;
+  label: string; value: string; sub?: string; icon: any; accent?: string; note?: string;
 }) {
   return (
-    <div
-      onClick={onClick}
-      className="rounded-xl p-5 border transition-all"
-      style={{
-        background: active ? accent + "12" : "#fff",
-        borderColor: active ? accent : BORDER,
-        borderWidth: active ? 2 : 1,
-        cursor: onClick ? "pointer" : "default",
-        boxShadow: active ? `0 0 0 3px ${accent}18` : undefined,
-      }}
-    >
+    <div className="rounded-xl p-5 border bg-white" style={{ borderColor: BORDER }}>
       <div className="flex items-start justify-between mb-3">
         <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: MUTED }}>{label}</span>
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: accent + "18" }}>
-          <Icon size={16} style={{ color: accent }} />
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: accent + "18" }}>
+          <Icon size={15} style={{ color: accent }} />
         </div>
       </div>
-      <p className="text-xl font-semibold font-mono" style={{ color: TEXT }}>{value}</p>
-      {sub && <p className="text-xs mt-1" style={{ color: MUTED }}>{sub}</p>}
+      <p className="text-2xl font-bold font-mono tracking-tight" style={{ color: TEXT }}>{value}</p>
+      {sub && <p className="text-xs mt-1.5 font-medium" style={{ color: accent }}>{sub}</p>}
+      {note && <p className="text-xs mt-1" style={{ color: MUTED, fontStyle: "italic" }}>{note}</p>}
     </div>
   );
 }
 
-// ── Section row ───────────────────────────────────────────────────────────────
-
-function SectionHeader({
-  label, count, cost, fv, open, onToggle,
-}: {
-  label: string; count: number; cost: number; fv: number;
-  open: boolean; onToggle: () => void;
-}) {
-  const gl = fv - cost;
-  const moic = cost > 0 ? fv / cost : 1;
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <tr
-      onClick={onToggle}
-      className="cursor-pointer select-none"
-      style={{ background: "hsl(var(--muted) / 0.4)", borderTop: `2px solid ${BORDER}` }}
-    >
-      <td className="px-4 py-2.5" colSpan={2}>
-        <div className="flex items-center gap-2">
-          {open
-            ? <ChevronDown size={14} style={{ color: MUTED }} />
-            : <ChevronRight size={14} style={{ color: MUTED }} />}
-          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: TEXT }}>{label}</span>
-          <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: ACCENT + "18", color: ACCENT }}>
-            {count}
-          </span>
-        </div>
-      </td>
-      <td className="px-4 py-2.5 text-right text-xs font-mono font-semibold" style={{ color: TEXT }}>
-        {fmtUsd(cost, true)}
-      </td>
-      <td className="px-4 py-2.5 text-right text-xs font-mono font-semibold" style={{ color: TEXT }}>
-        {fmtUsd(fv, true)}
-      </td>
-      <td className="px-4 py-2.5 text-right text-xs font-mono font-semibold"
-        style={{ color: gl >= 0 ? "#0CA678" : "#FA5252" }}>
-        {gl >= 0 ? "+" : ""}{fmtUsd(gl, true)}
-      </td>
-      <td className="px-4 py-2.5 text-right text-xs font-mono font-semibold"
-        style={{ color: moic >= 1 ? "#0CA678" : "#FA5252" }}>
-        {moic.toFixed(2)}x
-      </td>
-      <td colSpan={4} />
-    </tr>
+    <h2 className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: MUTED }}>
+      {children}
+    </h2>
   );
 }
 
-// ── Investment row ─────────────────────────────────────────────────────────────
-
-function InvRow({
-  inv, onMark,
-}: {
-  inv: any;
-  onMark: (inv: any) => void;
+// ── Allocation donut (pure CSS arc) — replaced with bar chart for reliability
+function AllocationBar({ items }: {
+  items: { label: string; value: number; color: string; pct: number }[];
 }) {
-  const cost    = Number(inv.cost_basis ?? 0);
-  const fv      = Number(inv.current_fair_value ?? inv.cost_basis ?? cost);
-  const gl      = fv - cost;
-  const moic    = cost > 0 ? fv / cost : 1;
-  const stale   = isStale(inv.fair_value_date, cost);
-  const marked  = !!inv.fair_value_date;
-  const basisLabel = inv.valuation_basis ?? (marked ? "Marked" : "At Cost");
-
   return (
-    <tr
-      className="group"
-      style={{ borderTop: `1px solid ${BORDER}`, background: "hsl(var(--card))" }}
-    >
-      {/* Company */}
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="min-w-0">
-            <p className="text-sm font-medium truncate" style={{ color: TEXT }}>
-              {inv.company_name}
-            </p>
-            {inv.instrument_type && (
-              <p className="text-xs mt-0.5" style={{ color: MUTED }}>
-                {inv.instrument_type.replace(/_/g, " ")}
-              </p>
-            )}
+    <div className="space-y-3">
+      {items.map(item => (
+        <div key={item.label}>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: item.color }} />
+              <span className="text-sm" style={{ color: TEXT }}>{item.label}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono" style={{ color: MUTED }}>{fmt(item.value, true)}</span>
+              <span className="text-xs font-semibold font-mono w-10 text-right" style={{ color: TEXT }}>
+                {item.pct.toFixed(1)}%
+              </span>
+            </div>
           </div>
-          {inv.company_website && (
-            <a
-              href={inv.company_website}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ color: ACCENT }}
-            >
-              <ExternalLink size={11} />
-            </a>
-          )}
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))" }}>
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${item.pct}%`, background: item.color }}
+            />
+          </div>
         </div>
-      </td>
-
-      {/* Vehicle */}
-      <td className="px-4 py-3">
-        <span className="text-xs font-mono px-2 py-0.5 rounded" style={{ background: "hsl(var(--muted))", color: MUTED }}>
-          {inv._vehicle ?? inv.entities?.short_code?.replace("FC-", "") ?? "—"}
-        </span>
-      </td>
-
-      {/* Cost */}
-      <td className="px-4 py-3 text-right font-mono text-sm" style={{ color: TEXT }}>
-        {fmtUsd(cost)}
-      </td>
-
-      {/* Fair Value */}
-      <td className="px-4 py-3 text-right font-mono text-sm font-medium" style={{ color: TEXT }}>
-        {fmtUsd(fv)}
-      </td>
-
-      {/* G/L */}
-      <td className="px-4 py-3 text-right font-mono text-sm"
-        style={{ color: gl >= 0 ? "#0CA678" : "#FA5252" }}>
-        {gl >= 0 ? "+" : ""}{fmtUsd(gl, true)}
-      </td>
-
-      {/* MOIC */}
-      <td className="px-4 py-3 text-right font-mono text-sm font-semibold"
-        style={{ color: moic >= 1 ? "#0CA678" : "#FA5252" }}>
-        {moic.toFixed(2)}x
-      </td>
-
-      {/* Basis */}
-      <td className="px-4 py-3">
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-          style={{
-            background: marked ? "#0CA67818" : "#F59F0018",
-            color:      marked ? "#0CA678"    : "#E67700",
-          }}
-        >
-          {basisLabel}
-        </span>
-      </td>
-
-      {/* As At */}
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-1">
-          {stale && (
-            <AlertTriangle size={11} style={{ color: "#FA5252", flexShrink: 0 }} />
-          )}
-          <span className="text-xs font-mono" style={{ color: stale ? "#FA5252" : MUTED }}>
-            {inv.fair_value_date ? fmtDate(inv.fair_value_date) : "—"}
-          </span>
-        </div>
-      </td>
-
-      {/* Action */}
-      <td className="px-4 py-3">
-        <button
-          onClick={() => onMark(inv)}
-          className="text-[10px] px-2 py-0.5 rounded border whitespace-nowrap opacity-60 group-hover:opacity-100 transition-opacity"
-          style={{ borderColor: ACCENT, color: ACCENT, background: "transparent" }}
-        >
-          Mark
-        </button>
-      </td>
-    </tr>
+      ))}
+    </div>
   );
 }
 
-// ── Section subtotal row ──────────────────────────────────────────────────────
-
-function SubtotalRow({ cost, fv }: { cost: number; fv: number }) {
-  const gl   = fv - cost;
-  const moic = cost > 0 ? fv / cost : 1;
-  return (
-    <tr style={{ background: "hsl(var(--muted) / 0.2)", borderTop: `1px solid ${BORDER}` }}>
-      <td className="px-4 py-2 text-xs font-semibold" style={{ color: MUTED }} colSpan={2}>Subtotal</td>
-      <td className="px-4 py-2 text-right text-xs font-mono font-semibold" style={{ color: TEXT }}>{fmtUsd(cost)}</td>
-      <td className="px-4 py-2 text-right text-xs font-mono font-semibold" style={{ color: TEXT }}>{fmtUsd(fv)}</td>
-      <td className="px-4 py-2 text-right text-xs font-mono font-semibold" style={{ color: gl >= 0 ? "#0CA678" : "#FA5252" }}>
-        {gl >= 0 ? "+" : ""}{fmtUsd(gl, true)}
-      </td>
-      <td className="px-4 py-2 text-right text-xs font-mono font-semibold" style={{ color: moic >= 1 ? "#0CA678" : "#FA5252" }}>
-        {moic.toFixed(2)}x
-      </td>
-      <td colSpan={4} />
-    </tr>
-  );
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
-
-type FilterKey = "all" | "stale" | "marked" | "atcost";
-type DrillKey = "cost" | "fv" | "gl" | "marks" | null;
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export default function PortfolioSummary() {
-  const qc = useQueryClient();
+  const [, navigate] = useLocation();
 
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    delaware: true, yc: true, other: true,
-  });
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [valuationInv, setValuationInv] = useState<any | null>(null);
-  const [activeDrill, setActiveDrill] = useState<DrillKey>(null);
-
-  function openDrill(key: DrillKey) {
-    setActiveDrill(prev => prev === key ? null : key);
-  }
-
-  function toggleSection(key: string) {
-    setOpenSections(s => ({ ...s, [key]: !s[key] }));
-  }
-
-  // ── Data fetching ──────────────────────────────────────────────────────────
-
-  // All investments (Delaware + Other)
+  // ── Fetch all investments ─────────────────────────────────────────────────
   const { data: allInvestments = [], isLoading: invLoading } = useQuery<any[]>({
     queryKey: ["/api/investments", "portfolio-summary"],
     queryFn: () => apiRequest("GET", "/api/investments").then(r => r.json()),
   });
 
-  // YC deals
+  // ── Fetch YC deals ────────────────────────────────────────────────────────
   const { data: ycData, isLoading: ycLoading } = useQuery<any>({
     queryKey: ["/api/yc-deals"],
     queryFn: () => apiRequest("GET", "/api/yc-deals").then(r => r.json()),
@@ -307,538 +134,506 @@ export default function PortfolioSummary() {
 
   const loading = invLoading || ycLoading;
 
-  // ── Split investments ──────────────────────────────────────────────────────
+  // ── Computed data ─────────────────────────────────────────────────────────
+  const {
+    // Fund-level metrics
+    totalDeployed, totalFV, totalExitProceeds, totalDistributions,
+    tvpi, dpi, rvpi, grossMOIC,
+    // Allocation
+    delawareCost, ycCost, otherCost,
+    delawareFV, ycFV, otherFV,
+    // Top positions
+    topPositions,
+    // Health
+    activeCount, atRiskCount, writtenOffCount, exitedCount,
+    activeValue, atRiskValue, writtenOffValue, exitedValue,
+    // Valuation hygiene
+    totalPositions, markedCount, staleCount, atCostCount,
+    oldestMark, newestMark,
+    // Follow-on activity
+    followOnDeals, followOnRaisedTotal,
+    // Recent additions (last 90d)
+    recentInvestments,
+    // Deployment by vintage
+    vintageData,
+  } = useMemo(() => {
+    const deals: any[] = ycData?.deals ?? [];
 
-  const delawareInvs = useMemo(() =>
-    allInvestments.filter((i: any) =>
-      i.entities?.short_code?.startsWith("FC-VECTOR") &&
-      !(i.company_name ?? "").includes("(YC ")
-    ),
-    [allInvestments]
-  );
+    // Deduplicate YC by name, prefer highest fc_investment
+    const ycSeen = new Map<string, any>();
+    for (const d of deals) {
+      const key = (d.name ?? "").toLowerCase();
+      const existing = ycSeen.get(key);
+      if (!existing || (d.fc_investment ?? 0) > (existing.fc_investment ?? 0)) ycSeen.set(key, d);
+    }
+    const ycDeals = Array.from(ycSeen.values());
 
-  const otherInvs = useMemo(() =>
-    allInvestments.filter((i: any) => {
+    // Split investments
+    const delawareInvs = allInvestments.filter((i: any) =>
+      i.entities?.short_code?.startsWith("FC-VECTOR") && !(i.company_name ?? "").includes("(YC ")
+    );
+    const otherInvs = allInvestments.filter((i: any) => {
       const sc = i.entities?.short_code ?? "";
       if (sc.startsWith("FC-CAYMAN")) return false;
       if (sc.startsWith("FC-VECTOR")) return false;
       if ((i.company_name ?? "").includes("(YC ")) return false;
       return true;
-    }),
-    [allInvestments]
-  );
+    });
 
-  // YC: map yc_deals to investment-like rows, then try to merge with actual investments record
-  const ycInvs = useMemo(() => {
-    const deals: any[] = ycData?.deals ?? [];
-    // Dedup by name — keep the row with the highest fc_investment (real entry over ghost duplicates)
-    const seen = new Map<string, any>();
-    for (const d of deals) {
-      const key = (d.name ?? "").toLowerCase();
-      const existing = seen.get(key);
-      if (!existing || (d.fc_investment ?? 0) > (existing.fc_investment ?? 0)) {
-        seen.set(key, d);
-      }
-    }
-    return Array.from(seen.values()).map((d: any) => {
-      // Try to find matching investments row for mark data
+    // Map YC deals to investment-like rows
+    const ycInvs = ycDeals.map((d: any) => {
       const match = allInvestments.find(
         (i: any) => i.company_name?.toLowerCase() === d.name?.toLowerCase()
       );
       return {
         id: match?.id ?? d.id,
-        _yc_deal_id: d.id,
         company_name: d.name,
-        company_website: d.url ?? null,
         _vehicle: `YC ${d.batch ?? ""}`.trim(),
-        instrument_type: d.instrument ?? null,
         cost_basis: match?.cost_basis ?? d.usd_investment_value ?? d.fc_investment ?? 0,
         current_fair_value: match?.current_fair_value ?? d.live_market_value_usd ?? d.usd_investment_value ?? d.fc_investment ?? 0,
         fair_value_date: match?.fair_value_date ?? null,
         valuation_basis: match?.valuation_basis ?? null,
+        status: d.health_status?.toLowerCase().replace(" ", "_") ?? "active",
+        investment_date: match?.investment_date ?? null,
+        exit_proceeds: match?.exit_proceeds ?? null,
+        _has_followon: d.has_followon ?? false,
+        _followon_round: d.followon_round ?? null,
+        _followon_amount: d.followon_amount_usd ?? 0,
+        _followon_company: d.name,
         entities: match?.entities ?? null,
-        _noInvestmentRecord: !match,
-        status: d.status,
       };
     });
-  }, [ycData, allInvestments]);
 
-  // ── Apply filter ───────────────────────────────────────────────────────────
+    const allRows = [...delawareInvs, ...ycInvs, ...otherInvs];
 
-  function applyFilter(rows: any[]): any[] {
-    if (filter === "all")    return rows;
-    if (filter === "stale")  return rows.filter(r => isStale(r.fair_value_date, Number(r.cost_basis ?? 0)));
-    if (filter === "marked") return rows.filter(r => !!r.fair_value_date);
-    if (filter === "atcost") return rows.filter(r => !r.fair_value_date);
-    return rows;
+    // ── Totals ──────────────────────────────────────────────────────────────
+    const totalDeployed = allRows.reduce((s, r) => s + Number(r.cost_basis ?? 0), 0);
+    const totalFV       = allRows.reduce((s, r) => s + Number(r.current_fair_value ?? r.cost_basis ?? 0), 0);
+    const totalExitProceeds = allRows.reduce((s, r) => s + Number(r.exit_proceeds ?? 0), 0);
+    // distributions = exit_proceeds for now (no separate distribution table populated)
+    const totalDistributions = totalExitProceeds;
+
+    // Fund-level multiples
+    const tvpi  = totalDeployed > 0 ? (totalFV + totalDistributions) / totalDeployed : 1;
+    const dpi   = totalDeployed > 0 ? totalDistributions / totalDeployed : 0;
+    const rvpi  = totalDeployed > 0 ? totalFV / totalDeployed : 1;
+    const grossMOIC = totalDeployed > 0 ? totalFV / totalDeployed : 1;
+
+    // ── Allocation by vehicle ───────────────────────────────────────────────
+    const sum = (rows: any[]) => ({
+      cost: rows.reduce((s, r) => s + Number(r.cost_basis ?? 0), 0),
+      fv:   rows.reduce((s, r) => s + Number(r.current_fair_value ?? r.cost_basis ?? 0), 0),
+    });
+    const dSums = sum(delawareInvs);
+    const ySums = sum(ycInvs);
+    const oSums = sum(otherInvs);
+
+    // ── Top positions by cost ───────────────────────────────────────────────
+    const topPositions = [...allRows]
+      .sort((a, b) => Number(b.cost_basis ?? 0) - Number(a.cost_basis ?? 0))
+      .slice(0, 8)
+      .map(r => ({
+        name: r.company_name,
+        cost: Number(r.cost_basis ?? 0),
+        fv: Number(r.current_fair_value ?? r.cost_basis ?? 0),
+        pct: totalDeployed > 0 ? (Number(r.cost_basis ?? 0) / totalDeployed) * 100 : 0,
+        vehicle: r._vehicle ?? r.entities?.short_code?.replace("FC-", "") ?? "—",
+      }));
+
+    // ── Health status ───────────────────────────────────────────────────────
+    const isActive    = (r: any) => !["exited", "written_off", "at_risk"].includes((r.status ?? "").toLowerCase());
+    const isAtRisk    = (r: any) => (r.status ?? "").toLowerCase() === "at_risk";
+    const isWrittenOff = (r: any) => (r.status ?? "").toLowerCase() === "written_off";
+    const isExited    = (r: any) => (r.status ?? "").toLowerCase() === "exited";
+
+    const activeRows     = allRows.filter(isActive);
+    const atRiskRows     = allRows.filter(isAtRisk);
+    const writtenOffRows = allRows.filter(isWrittenOff);
+    const exitedRows     = allRows.filter(isExited);
+
+    const activeCount     = activeRows.length;
+    const atRiskCount     = atRiskRows.length;
+    const writtenOffCount = writtenOffRows.length;
+    const exitedCount     = exitedRows.length;
+    const activeValue     = activeRows.reduce((s, r) => s + Number(r.cost_basis ?? 0), 0);
+    const atRiskValue     = atRiskRows.reduce((s, r) => s + Number(r.cost_basis ?? 0), 0);
+    const writtenOffValue = writtenOffRows.reduce((s, r) => s + Number(r.cost_basis ?? 0), 0);
+    const exitedValue     = exitedRows.reduce((s, r) => s + Number(r.cost_basis ?? 0), 0);
+
+    // ── Valuation hygiene ───────────────────────────────────────────────────
+    const totalPositions = allRows.length;
+    const markedRows     = allRows.filter(r => !!r.fair_value_date);
+    const markedCount    = markedRows.length;
+    const staleCount     = allRows.filter(r => isStale(r.fair_value_date, Number(r.cost_basis ?? 0))).length;
+    const atCostCount    = allRows.filter(r => !r.fair_value_date).length;
+
+    const markDates = markedRows.map(r => r.fair_value_date).filter(Boolean).sort();
+    const oldestMark = markDates[0] ?? null;
+    const newestMark = markDates[markDates.length - 1] ?? null;
+
+    // ── Follow-on activity (YC) ─────────────────────────────────────────────
+    const followOnRows = ycInvs.filter(r => r._has_followon);
+    const followOnDeals = followOnRows.map(r => ({
+      name: r._followon_company,
+      round: r._followon_round,
+      amount: r._followon_amount,
+    })).sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0)).slice(0, 5);
+    const followOnRaisedTotal = followOnRows.reduce((s, r) => s + (r._followon_amount ?? 0), 0);
+
+    // ── Recent investments (last 90d) ───────────────────────────────────────
+    const cutoff = Date.now() - 90 * 86_400_000;
+    const recentInvestments = allInvestments
+      .filter((r: any) => r.investment_date && new Date(r.investment_date).getTime() > cutoff)
+      .sort((a: any, b: any) => new Date(b.investment_date).getTime() - new Date(a.investment_date).getTime())
+      .slice(0, 5);
+
+    // ── Vintage / deployment by year ────────────────────────────────────────
+    const byYear: Record<string, number> = {};
+    for (const r of allInvestments) {
+      if (!r.investment_date) continue;
+      const yr = new Date(r.investment_date).getFullYear().toString();
+      byYear[yr] = (byYear[yr] ?? 0) + Number(r.cost_basis ?? 0);
+    }
+    const vintageData = Object.entries(byYear)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([yr, v]) => ({ year: yr, value: v }));
+
+    return {
+      totalDeployed, totalFV, totalExitProceeds, totalDistributions,
+      tvpi, dpi, rvpi, grossMOIC,
+      delawareCost: dSums.cost, ycCost: ySums.cost, otherCost: oSums.cost,
+      delawareFV: dSums.fv, ycFV: ySums.fv, otherFV: oSums.fv,
+      topPositions,
+      activeCount, atRiskCount, writtenOffCount, exitedCount,
+      activeValue, atRiskValue, writtenOffValue, exitedValue,
+      totalPositions, markedCount, staleCount, atCostCount,
+      oldestMark, newestMark,
+      followOnDeals, followOnRaisedTotal,
+      recentInvestments,
+      vintageData,
+    };
+  }, [allInvestments, ycData]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: BG }}>
+        <div className="text-sm" style={{ color: MUTED }}>Loading portfolio…</div>
+      </div>
+    );
   }
 
-  const filteredDelaware = applyFilter(delawareInvs);
-  const filteredYC       = applyFilter(ycInvs);
-  const filteredOther    = applyFilter(otherInvs);
-
-  // ── Totals ─────────────────────────────────────────────────────────────────
-
-  function totals(rows: any[]) {
-    return rows.reduce((acc, r) => {
-      acc.cost += Number(r.cost_basis ?? 0);
-      acc.fv   += Number(r.current_fair_value ?? r.cost_basis ?? 0);
-      return acc;
-    }, { cost: 0, fv: 0 });
-  }
-
-  const dTotals = totals(delawareInvs);
-  const yTotals = totals(ycInvs);
-  const oTotals = totals(otherInvs);
-
-  const grandCost = dTotals.cost + yTotals.cost + oTotals.cost;
-  const grandFV   = dTotals.fv  + yTotals.fv  + oTotals.fv;
-  const grandGL   = grandFV - grandCost;
-  const grandMOIC = grandCost > 0 ? grandFV / grandCost : 1;
-
-  const staleCount = [...delawareInvs, ...ycInvs, ...otherInvs]
-    .filter(r => isStale(r.fair_value_date, Number(r.cost_basis ?? 0))).length;
-  const markedCount = [...delawareInvs, ...ycInvs, ...otherInvs]
-    .filter(r => !!r.fair_value_date).length;
-  const totalCount = delawareInvs.length + ycInvs.length + otherInvs.length;
-
-  // ── Render ─────────────────────────────────────────────────────────────────
-
-  const TH = "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-left";
+  const maxVintage = Math.max(...vintageData.map(v => v.value), 1);
+  const allocationTotal = delawareCost + ycCost + otherCost;
 
   return (
     <div className="min-h-screen" style={{ background: BG }}>
-      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
 
-        {/* Header */}
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight" style={{ color: TEXT }}>
-              Portfolio Summary
+              Portfolio Overview
             </h1>
             <p className="text-sm mt-1" style={{ color: MUTED }}>
-              All investments at cost and fair value · {totalCount} positions across 3 vehicles
+              {totalPositions} positions · as at {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
             </p>
           </div>
           {staleCount > 0 && (
-            <div
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer"
-              style={{ borderColor: "#FA525240", background: "#FA525210", color: "#FA5252" }}
-              onClick={() => setFilter(f => f === "stale" ? "all" : "stale")}
+            <button
+              onClick={() => navigate("/marks")}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-colors hover:bg-red-50"
+              style={{ borderColor: RED + "40", background: RED + "10", color: RED }}
             >
               <AlertTriangle size={13} />
-              {staleCount} stale {staleCount === 1 ? "mark" : "marks"} · click to filter
+              {staleCount} stale mark{staleCount !== 1 ? "s" : ""} — update now
+            </button>
+          )}
+        </div>
+
+        {/* ── Section 1: Fund Performance Metrics ────────────────────────── */}
+        <div>
+          <SectionLabel>Fund Performance</SectionLabel>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <MetricCard
+              label="TVPI"
+              value={`${tvpi.toFixed(2)}x`}
+              sub="Total Value / Paid-In"
+              icon={TrendingUp}
+              accent={tvpi >= 1.5 ? GREEN : tvpi >= 1 ? ACCENT : RED}
+              note={tvpi === 1.0 ? "At cost — marks pending" : undefined}
+            />
+            <MetricCard
+              label="DPI"
+              value={`${dpi.toFixed(2)}x`}
+              sub="Distributions / Paid-In"
+              icon={DollarSign}
+              accent={dpi >= 1 ? GREEN : MUTED}
+              note={dpi === 0 ? "No exits recorded yet" : undefined}
+            />
+            <MetricCard
+              label="RVPI"
+              value={`${rvpi.toFixed(2)}x`}
+              sub="Residual Value / Paid-In"
+              icon={BarChart3}
+              accent={ACCENT}
+            />
+            <MetricCard
+              label="NAV"
+              value={fmt(totalFV, true)}
+              sub={`Cost: ${fmt(totalDeployed, true)}`}
+              icon={PieChart}
+              accent={GREEN}
+            />
+            <MetricCard
+              label="Gross MOIC"
+              value={`${grossMOIC.toFixed(2)}x`}
+              sub={`${fmt(totalFV, true)} FV on ${fmt(totalDeployed, true)}`}
+              icon={Activity}
+              accent={grossMOIC >= 2 ? GREEN : grossMOIC >= 1 ? ACCENT : RED}
+            />
+          </div>
+
+          {/* DPI gap note */}
+          {dpi === 0 && (
+            <div
+              className="mt-3 flex items-start gap-2 px-4 py-3 rounded-lg border text-xs"
+              style={{ borderColor: AMBER + "40", background: AMBER + "0D", color: AMBER }}
+            >
+              <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>DPI = 0.00x</strong> — no exit proceeds are recorded in the system.
+                Groq and any other partial or full distributions should be entered via the
+                <strong> exit_proceeds</strong> field on each investment record.
+                The Anthropic (Dec 24) disposal is marked <em>Exited</em> but has no exit proceeds value set.
+              </span>
             </div>
           )}
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <KpiCard
-            label="Total Cost"
-            value={fmtUsd(grandCost, true)}
-            sub={`${totalCount} positions`}
-            icon={DollarSign}
-            accent={ACCENT}
-            onClick={() => openDrill("cost")}
-            active={activeDrill === "cost"}
-          />
-          <KpiCard
-            label="Fair Value"
-            value={fmtUsd(grandFV, true)}
-            sub={`MOIC ${grandMOIC.toFixed(2)}x`}
-            icon={BarChart3}
-            accent="#0CA678"
-            onClick={() => openDrill("fv")}
-            active={activeDrill === "fv"}
-          />
-          <KpiCard
-            label="Unrealised G/L"
-            value={(grandGL >= 0 ? "+" : "") + fmtUsd(grandGL, true)}
-            sub={grandCost > 0 ? `${((grandGL / grandCost) * 100).toFixed(1)}% return` : undefined}
-            icon={TrendingUp}
-            accent={grandGL >= 0 ? "#0CA678" : "#FA5252"}
-            onClick={() => openDrill("gl")}
-            active={activeDrill === "gl"}
-          />
-          <KpiCard
-            label="Marks"
-            value={`${markedCount} / ${totalCount}`}
-            sub={staleCount > 0 ? `${staleCount} stale (90d+)` : "All marks current"}
-            icon={Clock}
-            accent={staleCount > 0 ? "#FA5252" : "#0CA678"}
-            onClick={() => openDrill("marks")}
-            active={activeDrill === "marks"}
-          />
+        {/* ── Section 2: Allocation + Top Positions ─────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+          {/* Allocation by vehicle */}
+          <div className="rounded-xl border bg-white p-6" style={{ borderColor: BORDER }}>
+            <SectionLabel>Capital Allocation by Vehicle</SectionLabel>
+            <AllocationBar
+              items={[
+                { label: "Delaware SPVs",  value: delawareCost, color: ACCENT,   pct: allocationTotal > 0 ? (delawareCost / allocationTotal) * 100 : 0 },
+                { label: "YC Portfolio",   value: ycCost,       color: GREEN,    pct: allocationTotal > 0 ? (ycCost / allocationTotal) * 100 : 0 },
+                { label: "Other",          value: otherCost,    color: "#F59F00", pct: allocationTotal > 0 ? (otherCost / allocationTotal) * 100 : 0 },
+              ]}
+            />
+            <div className="mt-4 pt-4 border-t grid grid-cols-3 gap-2 text-center" style={{ borderColor: BORDER }}>
+              {[
+                { label: "DE SPVs NAV",  value: fmt(delawareFV, true), color: ACCENT },
+                { label: "YC NAV",       value: fmt(ycFV, true),       color: GREEN },
+                { label: "Other NAV",    value: fmt(otherFV, true),    color: "#F59F00" },
+              ].map(k => (
+                <div key={k.label}>
+                  <p className="text-xs" style={{ color: MUTED }}>{k.label}</p>
+                  <p className="text-sm font-semibold font-mono mt-0.5" style={{ color: k.color }}>{k.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Top 8 positions */}
+          <div className="rounded-xl border bg-white p-6" style={{ borderColor: BORDER }}>
+            <SectionLabel>Top Positions by Cost</SectionLabel>
+            <div className="space-y-2.5">
+              {topPositions.map((p, i) => (
+                <div key={p.name} className="flex items-center gap-3">
+                  <span className="text-xs font-mono w-4 flex-shrink-0" style={{ color: MUTED }}>{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-xs font-medium truncate" style={{ color: TEXT }}>{p.name}</span>
+                      <span className="text-xs font-mono flex-shrink-0 ml-2" style={{ color: MUTED }}>{p.pct.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1 rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))" }}>
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${p.pct}%`,
+                          background: i < 3 ? ACCENT : i < 6 ? GREEN : "#94A3B8",
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono w-14 text-right flex-shrink-0" style={{ color: TEXT }}>
+                    {fmt(p.cost, true)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs mt-4 pt-3 border-t" style={{ color: MUTED, borderColor: BORDER }}>
+              Top 8 positions represent {totalDeployed > 0 ? ((topPositions.reduce((s, p) => s + p.cost, 0) / totalDeployed) * 100).toFixed(1) : 0}% of total deployed capital.
+            </p>
+          </div>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex items-center gap-1 border-b pb-0" style={{ borderColor: BORDER }}>
-          {([
-            { id: "all",    label: "All Positions" },
-            { id: "marked", label: "Marked" },
-            { id: "atcost", label: "At Cost" },
-            { id: "stale",  label: `Stale (${staleCount})` },
-          ] as { id: FilterKey; label: string }[]).map(f => (
+        {/* ── Section 3: Portfolio Health + Deployment Vintage ─────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+          {/* Health status */}
+          <div className="rounded-xl border bg-white p-6" style={{ borderColor: BORDER }}>
+            <SectionLabel>Portfolio Health</SectionLabel>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Active",      count: activeCount,     value: activeValue,     color: GREEN,  icon: CheckCircle2 },
+                { label: "At Risk",     count: atRiskCount,     value: atRiskValue,     color: AMBER,  icon: AlertTriangle },
+                { label: "Written Off", count: writtenOffCount, value: writtenOffValue, color: RED,    icon: XCircle },
+                { label: "Exited",      count: exitedCount,     value: exitedValue,     color: ACCENT, icon: ArrowUpRight },
+              ].map(h => (
+                <div
+                  key={h.label}
+                  className="rounded-lg p-3 border"
+                  style={{ borderColor: h.color + "30", background: h.color + "08" }}
+                >
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <h.icon size={13} style={{ color: h.color }} />
+                    <span className="text-xs font-medium" style={{ color: h.color }}>{h.label}</span>
+                  </div>
+                  <p className="text-2xl font-bold font-mono" style={{ color: TEXT }}>{h.count}</p>
+                  <p className="text-xs font-mono mt-0.5" style={{ color: MUTED }}>{fmt(h.value, true)}</p>
+                </div>
+              ))}
+            </div>
+            {exitedCount > 0 && (
+              <p className="text-xs mt-3 pt-3 border-t" style={{ color: MUTED, borderColor: BORDER }}>
+                {exitedCount} exited position{exitedCount !== 1 ? "s" : ""} — ensure exit_proceeds are recorded to populate DPI.
+              </p>
+            )}
+          </div>
+
+          {/* Deployment vintage */}
+          <div className="rounded-xl border bg-white p-6" style={{ borderColor: BORDER }}>
+            <SectionLabel>Deployment by Year</SectionLabel>
+            {vintageData.length === 0 ? (
+              <p className="text-xs" style={{ color: MUTED }}>No investment dates recorded.</p>
+            ) : (
+              <div className="space-y-3">
+                {vintageData.map(v => (
+                  <div key={v.year}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold" style={{ color: TEXT }}>{v.year}</span>
+                      <span className="text-xs font-mono" style={{ color: MUTED }}>{fmt(v.value, true)}</span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: "hsl(var(--muted))" }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${(v.value / maxVintage) * 100}%`, background: ACCENT }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 pt-3 border-t flex items-center justify-between" style={{ borderColor: BORDER }}>
+              <span className="text-xs" style={{ color: MUTED }}>Total deployed</span>
+              <span className="text-sm font-bold font-mono" style={{ color: TEXT }}>{fmt(totalDeployed)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 4: Valuation Hygiene ───────────────────────────────── */}
+        <div className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}>
+          <SectionLabel>Valuation Hygiene</SectionLabel>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            {[
+              { label: "Total Positions", value: totalPositions.toString(), color: TEXT,  note: undefined },
+              { label: "Marked",          value: markedCount.toString(),    color: GREEN, note: newestMark ? `Latest: ${fmtDate(newestMark)}` : undefined },
+              { label: "At Cost",         value: atCostCount.toString(),    color: AMBER, note: "No FMV recorded" },
+              { label: "Stale (>90d)",    value: staleCount.toString(),     color: staleCount > 0 ? RED : GREEN, note: staleCount > 0 ? `Oldest: ${fmtDate(oldestMark)}` : "All marks current" },
+            ].map(k => (
+              <div key={k.label} className="text-center p-3 rounded-lg" style={{ background: "hsl(var(--muted) / 0.3)" }}>
+                <p className="text-xs mb-1" style={{ color: MUTED }}>{k.label}</p>
+                <p className="text-2xl font-bold font-mono" style={{ color: k.color }}>{k.value}</p>
+                {k.note && <p className="text-xs mt-1" style={{ color: MUTED }}>{k.note}</p>}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs" style={{ color: MUTED }}>
+              Marks coverage: <strong style={{ color: TEXT }}>{totalPositions > 0 ? ((markedCount / totalPositions) * 100).toFixed(0) : 0}%</strong> of positions have a recorded fair value.
+            </p>
             <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors"
-              style={{
-                borderColor: filter === f.id ? ACCENT : "transparent",
-                color:       filter === f.id ? ACCENT  : MUTED,
-              }}
+              onClick={() => navigate("/marks")}
+              className="text-xs px-3 py-1.5 rounded-lg border transition-colors hover:bg-blue-50"
+              style={{ borderColor: ACCENT + "40", color: ACCENT }}
             >
-              {f.label}
+              Go to NAV Marks →
             </button>
-          ))}
+          </div>
         </div>
 
-        {/* Table */}
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-          {loading ? (
-            <div className="p-12 text-center text-sm" style={{ color: MUTED }}>Loading portfolio…</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: "hsl(var(--muted) / 0.5)", borderBottom: `1px solid ${BORDER}` }}>
-                  <th className={TH} style={{ color: MUTED }}>Company</th>
-                  <th className={TH} style={{ color: MUTED }}>Vehicle</th>
-                  <th className={TH + " text-right"} style={{ color: MUTED }}>Cost (USD)</th>
-                  <th className={TH + " text-right"} style={{ color: MUTED }}>Fair Value (USD)</th>
-                  <th className={TH + " text-right"} style={{ color: MUTED }}>G / L</th>
-                  <th className={TH + " text-right"} style={{ color: MUTED }}>MOIC</th>
-                  <th className={TH} style={{ color: MUTED }}>Basis</th>
-                  <th className={TH} style={{ color: MUTED }}>As At</th>
-                  <th className={TH} style={{ color: MUTED }}></th>
-                </tr>
-              </thead>
-              <tbody>
+        {/* ── Section 5: Follow-on Activity + Recent Investments ──────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                {/* ── Delaware ── */}
-                <SectionHeader
-                  label="🇺🇸 Delaware SPVs"
-                  count={filteredDelaware.length}
-                  cost={dTotals.cost}
-                  fv={dTotals.fv}
-                  open={openSections.delaware}
-                  onToggle={() => toggleSection("delaware")}
-                />
-                {openSections.delaware && filteredDelaware.map((inv: any) => (
-                  <InvRow key={inv.id} inv={inv} onMark={setValuationInv} />
+          {/* YC follow-on activity */}
+          <div className="rounded-xl border bg-white p-6" style={{ borderColor: BORDER }}>
+            <div className="flex items-center justify-between mb-4">
+              <SectionLabel>YC Follow-on Activity</SectionLabel>
+              <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: GREEN + "18", color: GREEN }}>
+                {followOnDeals.length} of top 5
+              </span>
+            </div>
+            {followOnDeals.length === 0 ? (
+              <p className="text-xs" style={{ color: MUTED }}>No follow-on rounds recorded yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {followOnDeals.map(f => (
+                  <div key={f.name} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: BORDER }}>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate" style={{ color: TEXT }}>{f.name}</p>
+                      <p className="text-xs mt-0.5" style={{ color: MUTED }}>{f.round ?? "—"}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                      <Zap size={11} style={{ color: GREEN }} />
+                      <span className="text-xs font-semibold font-mono" style={{ color: GREEN }}>
+                        {fmt(f.amount ?? 0, true)}
+                      </span>
+                    </div>
+                  </div>
                 ))}
-                {openSections.delaware && filteredDelaware.length > 1 && (
-                  <SubtotalRow cost={totals(filteredDelaware).cost} fv={totals(filteredDelaware).fv} />
-                )}
-                {openSections.delaware && filteredDelaware.length === 0 && (
-                  <tr style={{ borderTop: `1px solid ${BORDER}` }}>
-                    <td colSpan={9} className="px-4 py-5 text-sm text-center" style={{ color: MUTED }}>
-                      No positions match this filter.
-                    </td>
-                  </tr>
-                )}
-
-                {/* ── YC ── */}
-                <SectionHeader
-                  label="🇺🇸 YC Portfolio"
-                  count={filteredYC.length}
-                  cost={yTotals.cost}
-                  fv={yTotals.fv}
-                  open={openSections.yc}
-                  onToggle={() => toggleSection("yc")}
-                />
-                {openSections.yc && filteredYC.map((inv: any) => (
-                  <InvRow key={inv.id ?? inv._yc_deal_id} inv={inv} onMark={setValuationInv} />
-                ))}
-                {openSections.yc && filteredYC.length > 1 && (
-                  <SubtotalRow cost={totals(filteredYC).cost} fv={totals(filteredYC).fv} />
-                )}
-                {openSections.yc && filteredYC.length === 0 && (
-                  <tr style={{ borderTop: `1px solid ${BORDER}` }}>
-                    <td colSpan={9} className="px-4 py-5 text-sm text-center" style={{ color: MUTED }}>
-                      No positions match this filter.
-                    </td>
-                  </tr>
-                )}
-
-                {/* ── Other ── */}
-                <SectionHeader
-                  label="🌐 Other Investments"
-                  count={filteredOther.length}
-                  cost={oTotals.cost}
-                  fv={oTotals.fv}
-                  open={openSections.other}
-                  onToggle={() => toggleSection("other")}
-                />
-                {openSections.other && filteredOther.map((inv: any) => (
-                  <InvRow key={inv.id} inv={inv} onMark={setValuationInv} />
-                ))}
-                {openSections.other && filteredOther.length > 1 && (
-                  <SubtotalRow cost={totals(filteredOther).cost} fv={totals(filteredOther).fv} />
-                )}
-                {openSections.other && filteredOther.length === 0 && (
-                  <tr style={{ borderTop: `1px solid ${BORDER}` }}>
-                    <td colSpan={9} className="px-4 py-5 text-sm text-center" style={{ color: MUTED }}>
-                      No positions match this filter.
-                    </td>
-                  </tr>
-                )}
-
-                {/* ── Grand Total ── */}
-                <tr style={{ background: "hsl(var(--muted) / 0.6)", borderTop: `2px solid ${BORDER}` }}>
-                  <td className="px-4 py-3 text-sm font-bold" style={{ color: TEXT }} colSpan={2}>
-                    Grand Total · {totalCount} positions
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-sm" style={{ color: TEXT }}>
-                    {fmtUsd(grandCost)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-sm" style={{ color: TEXT }}>
-                    {fmtUsd(grandFV)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-sm"
-                    style={{ color: grandGL >= 0 ? "#0CA678" : "#FA5252" }}>
-                    {grandGL >= 0 ? "+" : ""}{fmtUsd(grandGL, true)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-sm"
-                    style={{ color: grandMOIC >= 1 ? "#0CA678" : "#FA5252" }}>
-                    {grandMOIC.toFixed(2)}x
-                  </td>
-                  <td colSpan={4} />
-                </tr>
-
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Legend */}
-        <div className="flex items-center gap-4 text-xs" style={{ color: MUTED }}>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: "#0CA67818", border: "1px solid #0CA678" }} />
-            Marked — fair value recorded via valuation mark
+              </div>
+            )}
+            <p className="text-xs mt-3 pt-3 border-t" style={{ color: MUTED, borderColor: BORDER }}>
+              {followOnRaisedTotal > 0
+                ? `Top 5 rounds raised ${fmt(followOnRaisedTotal, true)} combined.`
+                : "Follow-on data updated weekly via the YC health check cron."}
+            </p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: "#F59F0018", border: "1px solid #E67700" }} />
-            At Cost — no mark yet, FV = entry cost
-          </div>
-          <div className="flex items-center gap-1.5">
-            <AlertTriangle size={11} style={{ color: "#FA5252" }} />
-            Stale — last mark older than 90 days
+
+          {/* Recent new investments */}
+          <div className="rounded-xl border bg-white p-6" style={{ borderColor: BORDER }}>
+            <div className="flex items-center justify-between mb-4">
+              <SectionLabel>Recent Investments</SectionLabel>
+              <span className="text-xs" style={{ color: MUTED }}>Last 90 days</span>
+            </div>
+            {recentInvestments.length === 0 ? (
+              <p className="text-xs" style={{ color: MUTED }}>No new investments in the last 90 days.</p>
+            ) : (
+              <div className="space-y-3">
+                {recentInvestments.map((r: any) => (
+                  <div key={r.id} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: BORDER }}>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate" style={{ color: TEXT }}>{r.company_name}</p>
+                      <p className="text-xs mt-0.5" style={{ color: MUTED }}>
+                        {r.entities?.short_code?.replace("FC-", "") ?? "—"} · {fmtDate(r.investment_date)}
+                      </p>
+                    </div>
+                    <span className="text-xs font-semibold font-mono flex-shrink-0 ml-3" style={{ color: ACCENT }}>
+                      {fmt(Number(r.cost_basis ?? 0), true)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
       </div>
-
-      {/* Valuation Mark Modal */}
-      <ValuationMarkModal
-        investment={valuationInv}
-        open={!!valuationInv}
-        onClose={() => setValuationInv(null)}
-        onSaved={() => {
-          qc.invalidateQueries({ queryKey: ["/api/investments"] });
-          qc.invalidateQueries({ queryKey: ["/api/investments", "portfolio-summary"] });
-        }}
-      />
-
-      {/* KPI Drill-down Sheets */}
-      <PortfolioDrillSheet
-        drillKey={activeDrill}
-        onClose={() => setActiveDrill(null)}
-        allRows={[...delawareInvs, ...ycInvs, ...otherInvs]}
-        grandCost={grandCost}
-        grandFV={grandFV}
-        grandGL={grandGL}
-        markedCount={markedCount}
-        staleCount={staleCount}
-        totalCount={totalCount}
-      />
     </div>
-  );
-}
-
-// ── Portfolio Drill Sheet ──────────────────────────────────────────────────────
-
-function PortfolioDrillSheet({
-  drillKey, onClose, allRows,
-  grandCost, grandFV, grandGL, markedCount, staleCount, totalCount,
-}: {
-  drillKey: DrillKey;
-  onClose: () => void;
-  allRows: any[];
-  grandCost: number; grandFV: number; grandGL: number;
-  markedCount: number; staleCount: number; totalCount: number;
-}) {
-  const open = drillKey !== null;
-
-  const config: Record<NonNullable<DrillKey>, {
-    title: string; subtitle: string; accent: string;
-    rows: any[]; cols: { label: string; getValue: (r: any) => string; right?: boolean; accent?: (r: any) => string }[];
-  }> = {
-    cost: {
-      title: "Total Cost Breakdown",
-      subtitle: `${totalCount} positions · sorted by cost`,
-      accent: ACCENT,
-      rows: [...allRows].sort((a, b) => Number(b.cost_basis ?? 0) - Number(a.cost_basis ?? 0)),
-      cols: [
-        { label: "Company",  getValue: r => r.company_name ?? "—" },
-        { label: "Vehicle",  getValue: r => r._vehicle ?? r.entities?.short_code ?? "—" },
-        { label: "Cost",     getValue: r => fmtUsd(Number(r.cost_basis ?? 0)), right: true },
-        { label: "% of Total", getValue: r => grandCost > 0 ? ((Number(r.cost_basis ?? 0) / grandCost) * 100).toFixed(1) + "%" : "—", right: true },
-      ],
-    },
-    fv: {
-      title: "Fair Value Breakdown",
-      subtitle: `MOIC ${grandCost > 0 ? (grandFV / grandCost).toFixed(2) : "1.00"}x across ${totalCount} positions`,
-      accent: "#0CA678",
-      rows: [...allRows].sort((a, b) => Number(b.current_fair_value ?? 0) - Number(a.current_fair_value ?? 0)),
-      cols: [
-        { label: "Company",  getValue: r => r.company_name ?? "—" },
-        { label: "Vehicle",  getValue: r => r._vehicle ?? r.entities?.short_code ?? "—" },
-        { label: "Cost",     getValue: r => fmtUsd(Number(r.cost_basis ?? 0)), right: true },
-        { label: "Fair Value", getValue: r => fmtUsd(Number(r.current_fair_value ?? r.cost_basis ?? 0)), right: true },
-        { label: "MOIC", getValue: r => {
-          const c = Number(r.cost_basis ?? 0);
-          const fv = Number(r.current_fair_value ?? c);
-          return c > 0 ? (fv / c).toFixed(2) + "x" : "—";
-        }, right: true, accent: r => {
-          const c = Number(r.cost_basis ?? 0);
-          const fv = Number(r.current_fair_value ?? c);
-          return c > 0 && fv > c ? "#0CA678" : c > 0 && fv < c ? "#FA5252" : MUTED;
-        }},
-      ],
-    },
-    gl: {
-      title: "Unrealised G / L",
-      subtitle: `${grandGL >= 0 ? "+" : ""}${fmtUsd(grandGL, true)} total · ${grandCost > 0 ? ((grandGL / grandCost) * 100).toFixed(1) : "0"}% return`,
-      accent: grandGL >= 0 ? "#0CA678" : "#FA5252",
-      rows: [...allRows].sort((a, b) => {
-        const glA = Number(a.current_fair_value ?? a.cost_basis ?? 0) - Number(a.cost_basis ?? 0);
-        const glB = Number(b.current_fair_value ?? b.cost_basis ?? 0) - Number(b.cost_basis ?? 0);
-        return glB - glA;
-      }),
-      cols: [
-        { label: "Company", getValue: r => r.company_name ?? "—" },
-        { label: "Vehicle", getValue: r => r._vehicle ?? r.entities?.short_code ?? "—" },
-        { label: "Cost",    getValue: r => fmtUsd(Number(r.cost_basis ?? 0)), right: true },
-        { label: "G / L",  getValue: r => {
-          const gl = Number(r.current_fair_value ?? r.cost_basis ?? 0) - Number(r.cost_basis ?? 0);
-          return (gl >= 0 ? "+" : "") + fmtUsd(gl);
-        }, right: true, accent: r => {
-          const gl = Number(r.current_fair_value ?? r.cost_basis ?? 0) - Number(r.cost_basis ?? 0);
-          return gl > 0 ? "#0CA678" : gl < 0 ? "#FA5252" : MUTED;
-        }},
-        { label: "Return", getValue: r => {
-          const c = Number(r.cost_basis ?? 0);
-          const gl = Number(r.current_fair_value ?? c) - c;
-          return c > 0 ? ((gl / c) * 100).toFixed(1) + "%" : "—";
-        }, right: true, accent: r => {
-          const c = Number(r.cost_basis ?? 0);
-          const gl = Number(r.current_fair_value ?? c) - c;
-          return c > 0 && gl > 0 ? "#0CA678" : c > 0 && gl < 0 ? "#FA5252" : MUTED;
-        }},
-      ],
-    },
-    marks: {
-      title: "Valuation Marks",
-      subtitle: `${markedCount} marked · ${staleCount} stale (90d+) · ${totalCount - markedCount} at cost`,
-      accent: staleCount > 0 ? "#FA5252" : "#0CA678",
-      rows: [...allRows].sort((a, b) => {
-        // Stale first, then marked, then at cost
-        const staleA = isStale(a.fair_value_date, Number(a.cost_basis ?? 0)) ? 0 : a.fair_value_date ? 1 : 2;
-        const staleB = isStale(b.fair_value_date, Number(b.cost_basis ?? 0)) ? 0 : b.fair_value_date ? 1 : 2;
-        return staleA - staleB;
-      }),
-      cols: [
-        { label: "Company",  getValue: r => r.company_name ?? "—" },
-        { label: "Vehicle",  getValue: r => r._vehicle ?? r.entities?.short_code ?? "—" },
-        { label: "Status", getValue: r => {
-          if (isStale(r.fair_value_date, Number(r.cost_basis ?? 0))) return "Stale";
-          if (r.fair_value_date) return "Marked";
-          return "At Cost";
-        }, accent: r => {
-          if (isStale(r.fair_value_date, Number(r.cost_basis ?? 0))) return "#FA5252";
-          if (r.fair_value_date) return "#0CA678";
-          return "#E67700";
-        }},
-        { label: "Basis",   getValue: r => r.valuation_basis ?? "—" },
-        { label: "As At",   getValue: r => fmtDate(r.fair_value_date) },
-        { label: "Fair Value", getValue: r => fmtUsd(Number(r.current_fair_value ?? r.cost_basis ?? 0)), right: true },
-      ],
-    },
-  };
-
-  if (!drillKey || !config[drillKey]) return null;
-  const { title, subtitle, accent, rows, cols } = config[drillKey];
-
-  return (
-    <Sheet open={open} onOpenChange={v => !v && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto p-0">
-        <SheetHeader className="px-6 pt-6 pb-4 border-b" style={{ borderColor: BORDER }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <SheetTitle className="text-base font-semibold" style={{ color: TEXT }}>{title}</SheetTitle>
-              <p className="text-xs mt-0.5" style={{ color: MUTED }}>{subtitle}</p>
-            </div>
-            <button onClick={onClose} className="rounded-md p-1 hover:bg-black/5 transition-colors">
-              <X size={16} style={{ color: MUTED }} />
-            </button>
-          </div>
-        </SheetHeader>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: "hsl(var(--muted)/0.5)", borderBottom: `1px solid ${BORDER}` }}>
-                {cols.map(c => (
-                  <th
-                    key={c.label}
-                    className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wide ${c.right ? "text-right" : "text-left"}`}
-                    style={{ color: MUTED }}
-                  >
-                    {c.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr
-                  key={r.id ?? r._yc_deal_id ?? i}
-                  className="border-b transition-colors hover:bg-black/[0.02]"
-                  style={{ borderColor: BORDER }}
-                >
-                  {cols.map(c => {
-                    const val = c.getValue(r);
-                    const color = c.accent ? c.accent(r) : TEXT;
-                    return (
-                      <td
-                        key={c.label}
-                        className={`px-4 py-2.5 font-mono text-xs ${c.right ? "text-right" : ""}`}
-                        style={{ color }}
-                      >
-                        {c.label === "Company" ? (
-                          <span className="font-sans font-medium" style={{ color: TEXT }}>{val}</span>
-                        ) : val}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Summary footer */}
-        <div className="px-6 py-4 border-t" style={{ borderColor: BORDER, background: "hsl(var(--muted)/0.3)" }}>
-          <div className="flex items-center justify-between text-xs font-semibold" style={{ color: TEXT }}>
-            <span>{rows.length} positions</span>
-            {drillKey === "cost" && <span style={{ color: accent }}>{fmtUsd(grandCost)}</span>}
-            {drillKey === "fv"   && <span style={{ color: accent }}>{fmtUsd(grandFV)} · MOIC {grandCost > 0 ? (grandFV / grandCost).toFixed(2) : "1.00"}x</span>}
-            {drillKey === "gl"   && <span style={{ color: accent }}>{grandGL >= 0 ? "+" : ""}{fmtUsd(grandGL)} · {grandCost > 0 ? ((grandGL / grandCost) * 100).toFixed(1) : "0"}% return</span>}
-            {drillKey === "marks" && <span style={{ color: accent }}>{markedCount} marked · {staleCount} stale</span>}
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
   );
 }
