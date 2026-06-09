@@ -3584,14 +3584,57 @@ Founders Capital`;
   });
 
   // GET /api/lp-analytics — LP engagement stats + top 10 for Portfolio Summary
-  app.get("/api/lp-analytics", async (_req, res) => {
+  // ?filter=all|vector|yc|cayman|other (default: all)
+  app.get("/api/lp-analytics", async (req, res) => {
     try {
-      // Fetch all active commitments
-      const { data: commitments, error: cErr } = await supabase
+      const filter = (req.query.filter as string) || "all";
+
+      // Entity categorisation maps
+      const VECTOR_IDS = new Set([
+        "a1000000-0000-0000-0000-000000000006", // Vector I
+        "9f05cfb3-8f46-4175-92b2-c31afac38550", // Vector II
+        "4b9c14d2-f183-40e4-9268-cde01b565455", // Vector III
+        "c677bafd-be0b-4ddd-911f-a14746165f77", // Vector IV
+        "2184a8e9-30fd-4b45-b415-908571bbeae3", // Vector V
+      ]);
+      const CAYMAN_IDS = new Set([
+        "14d76562-2219-4121-b0bd-5379018ac3b4", // Cayman LP
+        "3540df09-f8bb-43ca-a4de-b89945b6b16b", // Cayman GP
+      ]);
+
+      // Fetch all entities so we can classify SPVs
+      const { data: entities, error: eErr } = await supabase
+        .from("entities")
+        .select("id,name");
+      if (eErr) throw eErr;
+
+      // Build entity-category lookup
+      const entityCategory: Record<string, "vector" | "yc" | "cayman" | "other"> = {};
+      for (const e of (entities ?? [])) {
+        if (VECTOR_IDS.has(e.id)) {
+          entityCategory[e.id] = "vector";
+        } else if (CAYMAN_IDS.has(e.id)) {
+          entityCategory[e.id] = "cayman";
+        } else if (/YC\s*[WSXF]\d{2}/i.test(e.name ?? "")) {
+          entityCategory[e.id] = "yc";
+        } else {
+          entityCategory[e.id] = "other";
+        }
+      }
+
+      // Fetch all active commitments with entity_id for filtering
+      const { data: allCommitments, error: cErr } = await supabase
         .from("investor_commitments")
-        .select("investor_id,committed_amount,called_amount")
+        .select("investor_id,entity_id,committed_amount,called_amount")
         .eq("status", "active");
       if (cErr) throw cErr;
+
+      // Apply filter
+      const commitments = (allCommitments ?? []).filter(c => {
+        if (filter === "all") return true;
+        const cat = entityCategory[c.entity_id] ?? "other";
+        return cat === filter;
+      });
 
       // Fetch all investors (paginate — Supabase default limit is 1000)
       const allInvestors: any[] = [];
@@ -3667,6 +3710,7 @@ Founders Capital`;
       const top10Pct   = totalCommitted > 0 ? (top10Total / totalCommitted) * 100 : 0;
 
       res.json({
+        filter,
         total_lps: totalLPs,
         total_committed: totalCommitted,
         gt1, gt5, gt10,

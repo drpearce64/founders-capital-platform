@@ -5,14 +5,14 @@
  * that lives on each jurisdiction dashboard.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import {
   TrendingUp, DollarSign, BarChart3, AlertTriangle,
   Activity, CheckCircle2, XCircle, ArrowUpRight,
-  Zap, PieChart, Users, Star,
+  Zap, PieChart, Users, Star, Filter,
 } from "lucide-react";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -117,8 +117,19 @@ function AllocationBar({ items }: {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+type LpFilter = "all" | "vector" | "yc" | "cayman" | "other";
+
+const LP_FILTERS: { key: LpFilter; label: string }[] = [
+  { key: "all",    label: "All" },
+  { key: "vector", label: "Vector Series" },
+  { key: "yc",     label: "YC SPVs" },
+  { key: "cayman", label: "Cayman Fund" },
+  { key: "other",  label: "Other SPVs" },
+];
+
 export default function PortfolioSummary() {
   const [, navigate] = useLocation();
+  const [lpFilter, setLpFilter] = useState<LpFilter>("all");
 
   // ── Fetch all investments ─────────────────────────────────────────────────
   const { data: allInvestments = [], isLoading: invLoading } = useQuery<any[]>({
@@ -132,8 +143,9 @@ export default function PortfolioSummary() {
     queryFn: () => apiRequest("GET", "/api/yc-deals").then(r => r.json()),
   });
 
-  // ── Fetch LP analytics ───────────────────────────────────────────────────
-  const { data: lpData } = useQuery<{
+  // ── Fetch LP analytics (re-fetches when filter changes) ──────────────────
+  const { data: lpData, isFetching: lpFetching } = useQuery<{
+    filter: string;
     total_lps: number;
     total_committed: number;
     gt1: number; gt5: number; gt10: number;
@@ -141,8 +153,8 @@ export default function PortfolioSummary() {
     top10_total: number;
     top10_pct: number;
   }>({
-    queryKey: ["/api/lp-analytics"],
-    queryFn: () => apiRequest("GET", "/api/lp-analytics").then(r => r.json()),
+    queryKey: ["/api/lp-analytics", lpFilter],
+    queryFn: () => apiRequest("GET", `/api/lp-analytics?filter=${lpFilter}`).then(r => r.json()),
   });
 
   const loading = invLoading || ycLoading;
@@ -648,7 +660,30 @@ export default function PortfolioSummary() {
 
         {/* ── Section 6: LP Intelligence ──────────────────────────────── */}
         <div>
-          <SectionLabel>LP Intelligence</SectionLabel>
+          {/* Header row with filter pills */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: MUTED }}>LP Intelligence</h2>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Filter size={12} style={{ color: MUTED }} />
+              {LP_FILTERS.map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setLpFilter(f.key)}
+                  className="text-xs px-3 py-1 rounded-full border transition-colors"
+                  style={{
+                    borderColor: lpFilter === f.key ? ACCENT : BORDER,
+                    background:  lpFilter === f.key ? ACCENT : "white",
+                    color:       lpFilter === f.key ? "white" : TEXT,
+                    fontWeight:  lpFilter === f.key ? 600 : 400,
+                    opacity:     lpFetching && lpFilter !== f.key ? 0.5 : 1,
+                    cursor:      "pointer",
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
@@ -657,6 +692,9 @@ export default function PortfolioSummary() {
               <div className="flex items-center gap-2 mb-5">
                 <Users size={15} style={{ color: ACCENT }} />
                 <span className="text-sm font-semibold" style={{ color: TEXT }}>LP Base</span>
+                {lpFetching && (
+                  <span className="ml-auto text-xs" style={{ color: MUTED }}>updating…</span>
+                )}
               </div>
               <div className="space-y-4">
                 {[
@@ -668,22 +706,22 @@ export default function PortfolioSummary() {
                     bold: true,
                   },
                   {
-                    label: "Multi-deal LPs",
-                    sub: "invested in > 1 Series",
+                    label: "Multi-investment LPs",
+                    sub: "> 1 investment",
                     value: lpData?.gt1 ?? "—",
                     accent: GREEN,
                     bold: false,
                   },
                   {
                     label: "Highly engaged",
-                    sub: "invested in > 5 Series",
+                    sub: "> 5 investments",
                     value: lpData?.gt5 ?? "—",
                     accent: GREEN,
                     bold: false,
                   },
                   {
                     label: "Power LPs",
-                    sub: "invested in > 10 Series",
+                    sub: "> 10 investments",
                     value: lpData?.gt10 ?? "—",
                     accent: AMBER,
                     bold: false,
@@ -714,7 +752,14 @@ export default function PortfolioSummary() {
               <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: BORDER }}>
                 <div className="flex items-center gap-2">
                   <Star size={14} style={{ color: AMBER }} />
-                  <span className="text-sm font-semibold" style={{ color: TEXT }}>Top 10 LPs by Committed Capital</span>
+                  <span className="text-sm font-semibold" style={{ color: TEXT }}>
+                    Top 10 LPs
+                    {lpFilter !== "all" && (
+                      <span className="ml-1.5 text-xs font-normal" style={{ color: MUTED }}>
+                        · {LP_FILTERS.find(f => f.key === lpFilter)?.label}
+                      </span>
+                    )}
+                  </span>
                 </div>
                 {lpData && (
                   <div className="flex items-center gap-2">
@@ -842,7 +887,10 @@ export default function PortfolioSummary() {
                 className="px-6 py-2.5 text-xs border-t"
                 style={{ borderColor: BORDER, color: MUTED, background: "hsl(var(--muted) / 0.2)" }}
               >
-                Committed amounts in USD. Duplicate investor records are merged by name — run the LP Duplicate Scan to resolve underlying data.
+                Committed amounts in USD. Duplicate investor records merged by name.
+                {lpFilter !== "all" && (
+                  <> Showing {LP_FILTERS.find(f => f.key === lpFilter)?.label} commitments only. Select ‘All’ to see the full LP base.</>)
+                }
               </div>
             </div>
 
