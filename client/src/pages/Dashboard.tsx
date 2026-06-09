@@ -5,10 +5,11 @@ import { fmtUSD, fmtDate } from "@/lib/utils";
 import {
   TrendingUp, Users, Building2, DollarSign, AlertCircle,
   Network, ChevronRight, Phone, BarChart3, CheckCircle2,
-  Filter, X,
+  Filter, X, ClipboardList, CheckCheck, Clock, AlertTriangle,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ValuationMarkModal } from "@/components/ValuationMarkModal";
+import { StatutoryFilingsSheet } from "@/components/StatutoryFilingsSheet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -294,6 +295,7 @@ function DrillContent({
   totalFV,
   uncalled,
   onOpenLPBreakdown,
+  onOpenFilings,
 }: {
   drillKey: DrillKey;
   filteredCommitments: any[];
@@ -305,6 +307,7 @@ function DrillContent({
   totalFV: number;
   uncalled: number;
   onOpenLPBreakdown?: (entity: any) => void;
+  onOpenFilings?: (entityId: string, entityName: string) => void;
 }) {
   const TH = "text-xs font-medium uppercase tracking-wider pb-2 text-left";
   const TD = "py-2.5 text-sm";
@@ -660,8 +663,8 @@ function DrillContent({
                   )}
                 </div>
               )}
-              {/* LP Breakdown button */}
-              <div className="mt-3 pt-3 border-t" style={{ borderColor: "hsl(var(--border))" }}>
+              {/* LP Breakdown + Filings buttons */}
+              <div className="mt-3 pt-3 border-t flex gap-2" style={{ borderColor: "hsl(var(--border))" }}>
                 <button
                   onClick={() => onOpenLPBreakdown && onOpenLPBreakdown(spv)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
@@ -670,6 +673,16 @@ function DrillContent({
                   <Users size={12} />
                   LP Breakdown
                 </button>
+                {onOpenFilings && (
+                  <button
+                    onClick={() => onOpenFilings(spv.id, spv.name ?? spv.short_code ?? "Entity")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
+                    style={{ background: "hsl(231 70% 60% / 0.12)", color: "hsl(231 70% 60%)" }}
+                  >
+                    <ClipboardList size={12} />
+                    Filings
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -821,6 +834,8 @@ export default function Dashboard() {
   const [selectedSeries, setSelectedSeries] = useState<string>("all");
   const [valuationInv, setValuationInv] = useState<any | null>(null);
   const [lpBreakdownEntity, setLpBreakdownEntity] = useState<any | null>(null);
+  const [filingsEntityId, setFilingsEntityId] = useState<string | null>(null);
+  const [filingsEntityName, setFilingsEntityName] = useState<string>("");
 
   const openDrill = (key: DrillKey) => setActiveDrill(key);
   const closeDrill = () => setActiveDrill(null);
@@ -972,6 +987,7 @@ export default function Dashboard() {
                 totalFV={totalFV}
                 uncalled={uncalled}
                 onOpenLPBreakdown={(entity) => { closeDrill(); setLpBreakdownEntity(entity); }}
+                onOpenFilings={(id, name) => { closeDrill(); setFilingsEntityId(id); setFilingsEntityName(name); }}
               />
             </>
           )}
@@ -1073,6 +1089,15 @@ export default function Dashboard() {
             >
               <Users size={11} />
               <span>LP Breakdown</span>
+            </button>
+            <button
+              onClick={() => selectedEntity && (setFilingsEntityId(selectedEntity.id), setFilingsEntityName(selectedEntity.name ?? selectedEntity.short_code ?? "Entity"))}
+              title="View statutory filings"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-opacity hover:opacity-80"
+              style={{ background: "hsl(231 70% 60% / 0.12)", color: "hsl(231 70% 60%)" }}
+            >
+              <ClipboardList size={11} />
+              <span>Filings</span>
             </button>
             <span className="ml-auto text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
               Showing data for this series only
@@ -1429,6 +1454,13 @@ export default function Dashboard() {
     <VectorLPBreakdownSheet
       entity={lpBreakdownEntity}
       onClose={() => setLpBreakdownEntity(null)}
+    />
+
+    {/* Statutory Filings Sheet */}
+    <StatutoryFilingsSheet
+      entityId={filingsEntityId}
+      entityName={filingsEntityName}
+      onClose={() => { setFilingsEntityId(null); setFilingsEntityName(""); }}
     />
     </>
   );

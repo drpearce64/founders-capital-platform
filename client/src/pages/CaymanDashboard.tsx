@@ -8,9 +8,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import {
   DollarSign, TrendingUp, Users, Phone, Building2,
   Globe, BarChart3, AlertCircle, CheckCircle2, Network, ChevronRight,
+  ClipboardList, AlertTriangle, Clock, CheckCheck,
 } from "lucide-react";
+import { StatutoryFilingsSheet } from "@/components/StatutoryFilingsSheet";
 
 const CAYMAN_FUND_ID = "14d76562-2219-4121-b0bd-5379018ac3b4";
+const CAYMAN_GP_ID   = "3540df09-f8bb-43ca-a4de-b89945b6b16b";
 
 const fmt = (n: number, decimals = 0) =>
   "$" + n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -139,6 +142,8 @@ function OrgTreeNode({ node, depth = 0 }: { node: OrgNode; depth?: number }) {
 
 export default function CaymanDashboard() {
   const [structureOpen, setStructureOpen] = useState(false);
+  const [filingsEntityId, setFilingsEntityId] = useState<string | null>(null);
+  const [filingsEntityName, setFilingsEntityName] = useState<string>("");
   // ── Data fetches ──────────────────────────────────────────────────────────
   const { data: commitments = [], isLoading: loadingCommitments } = useQuery({
     queryKey: ["/api/commitments", CAYMAN_FUND_ID],
@@ -245,25 +250,55 @@ export default function CaymanDashboard() {
               </span>
             )}
           </div>
-          <button
-            data-testid="button-cayman-entity-structure"
-            onClick={() => setStructureOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border"
-            style={{
-              background: "hsl(196 80% 46% / 0.10)",
-              borderColor: "hsl(196 80% 46% / 0.30)",
-              color: "hsl(196 80% 60%)",
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.background = "hsl(196 80% 46% / 0.18)";
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = "hsl(196 80% 46% / 0.10)";
-            }}
-          >
-            <Network size={14} />
-            Entity Structure
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setFilingsEntityId(CAYMAN_FUND_ID); setFilingsEntityName("Cayman Fund I LP"); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border"
+              style={{
+                background: "hsl(231 70% 60% / 0.10)",
+                borderColor: "hsl(231 70% 60% / 0.30)",
+                color: "hsl(231 70% 60%)",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "hsl(231 70% 60% / 0.18)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "hsl(231 70% 60% / 0.10)"; }}
+            >
+              <ClipboardList size={14} />
+              LP Filings
+            </button>
+            <button
+              onClick={() => { setFilingsEntityId(CAYMAN_GP_ID); setFilingsEntityName("Cayman Fund I GP"); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border"
+              style={{
+                background: "hsl(231 70% 60% / 0.10)",
+                borderColor: "hsl(231 70% 60% / 0.30)",
+                color: "hsl(231 70% 60%)",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "hsl(231 70% 60% / 0.18)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "hsl(231 70% 60% / 0.10)"; }}
+            >
+              <ClipboardList size={14} />
+              GP Filings
+            </button>
+            <button
+              data-testid="button-cayman-entity-structure"
+              onClick={() => setStructureOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border"
+              style={{
+                background: "hsl(196 80% 46% / 0.10)",
+                borderColor: "hsl(196 80% 46% / 0.30)",
+                color: "hsl(196 80% 60%)",
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.background = "hsl(196 80% 46% / 0.18)";
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.background = "hsl(196 80% 46% / 0.10)";
+              }}
+            >
+              <Network size={14} />
+              Entity Structure
+            </button>
+          </div>
         </div>
         <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
           Founders Capital Strat. Opps. Fund I LP — Reg. No. 134092 · CIMA Registered
@@ -532,6 +567,13 @@ export default function CaymanDashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Statutory Filings Sheet */}
+      <StatutoryFilingsSheet
+        entityId={filingsEntityId}
+        entityName={filingsEntityName}
+        onClose={() => { setFilingsEntityId(null); setFilingsEntityName(""); }}
+      />
     </div>
   );
 }

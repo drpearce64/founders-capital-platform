@@ -3562,6 +3562,93 @@ Founders Capital`;
     }
   });
 
+  // ============================================================
+  // STATUTORY FILINGS TRACKER
+  // ============================================================
+
+  // POST /api/migrate/statutory-filings — seed all 68 filings (idempotent upsert)
+  app.post("/api/migrate/statutory-filings", async (_req, res) => {
+    try {
+      // Requires statutory_filings table to already exist (run supabase_statutory_filings_migration.sql)
+      const seedPath = path.join(process.cwd(), "statutory_filings_seed.json");
+      const rows = JSON.parse(fs.readFileSync(seedPath, "utf8"));
+      const { data, error } = await supabase
+        .from("statutory_filings")
+        .upsert(rows, { onConflict: "entity_id,seq_no,filing_name", ignoreDuplicates: false })
+        .select("id");
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ seeded: (data ?? []).length, total: rows.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
+  // GET /api/statutory-filings/:entityId — all filings for an entity
+  app.get("/api/statutory-filings/:entityId", async (req, res) => {
+    try {
+      const { entityId } = req.params;
+      const { data, error } = await supabase
+        .from("statutory_filings")
+        .select("id,seq_no,filing_name,authority,frequency,applies_to,statutory_due,internal_target,status,date_completed,owner,adviser,reference_no,evidence_link,notes,updated_at")
+        .eq("entity_id", entityId)
+        .order("seq_no", { ascending: true });
+      if (error) return res.status(500).json({ error: error.message });
+
+      const today = new Date();
+      const filings = (data ?? []).map((f: any) => {
+        let days_to_due: number | null = null;
+        let alert: string | null = null;
+        if (f.statutory_due) {
+          const due = new Date(f.statutory_due);
+          days_to_due = Math.round((due.getTime() - today.getTime()) / 86400000);
+          if (f.status !== "Filed / Complete" && f.status !== "Not Applicable") {
+            if (days_to_due < 0)         alert = "OVERDUE";
+            else if (days_to_due <= 30)  alert = "Due in 30d";
+            else if (days_to_due <= 90)  alert = "Due in 90d";
+          }
+        }
+        return { ...f, days_to_due, alert };
+      });
+
+      const summary = {
+        total: filings.length,
+        overdue: filings.filter((f: any) => f.alert === "OVERDUE").length,
+        due_in_90d: filings.filter((f: any) => f.alert === "Due in 30d" || f.alert === "Due in 90d").length,
+        outstanding: filings.filter((f: any) => f.status !== "Filed / Complete" && f.status !== "Not Applicable" && f.filing_name).length,
+        next_due: filings
+          .filter((f: any) => f.statutory_due && f.status !== "Filed / Complete" && f.status !== "Not Applicable")
+          .sort((a: any, b: any) => new Date(a.statutory_due).getTime() - new Date(b.statutory_due).getTime())[0]?.statutory_due ?? null,
+      };
+
+      res.json({ entity_id: entityId, summary, filings });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
+  // PATCH /api/statutory-filings/:id — update status / date_completed / notes
+  app.patch("/api/statutory-filings/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const allowed = ["status", "date_completed", "internal_target", "owner", "reference_no", "evidence_link", "notes"];
+      const updates: Record<string, any> = {};
+      for (const key of allowed) {
+        if (key in req.body) updates[key] = req.body[key];
+      }
+      if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No valid fields to update" });
+      const { data, error } = await supabase
+        .from("statutory_filings")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ updated: data });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Unknown error" });
+    }
+  });
+
   // GET /api/yc-deals — read from Supabase yc_deals table (seeded from Airtable)
   app.get("/api/yc-deals", async (_req, res) => {
     try {
