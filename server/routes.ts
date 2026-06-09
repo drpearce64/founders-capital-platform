@@ -3593,12 +3593,19 @@ Founders Capital`;
         .eq("status", "active");
       if (cErr) throw cErr;
 
-      // Fetch all investors
-      const { data: investors, error: iErr } = await supabase
-        .from("investors")
-        .select("id,full_name,email")
-        .is("archived_at", null);
-      if (iErr) throw iErr;
+      // Fetch all investors (paginate — Supabase default limit is 1000)
+      const allInvestors: any[] = [];
+      for (let offset = 0; ; offset += 1000) {
+        const { data: page, error: iErr } = await supabase
+          .from("investors")
+          .select("id,full_name,email")
+          .is("archived_at", null)
+          .range(offset, offset + 999);
+        if (iErr) throw iErr;
+        allInvestors.push(...(page ?? []));
+        if (!page || page.length < 1000) break;
+      }
+      const investors = allInvestors;
 
       const investorMap: Record<string, { full_name: string | null; email: string | null }> = {};
       for (const inv of (investors ?? [])) {
@@ -3622,11 +3629,17 @@ Founders Capital`;
         byId[c.investor_id].deals += 1;
       }
 
-      // Merge duplicates by normalised name
+      // Merge duplicates by normalised name.
+      // Prefer the display name that does NOT look like a UUID (8-char hex prefix).
+      const uuidLike = /^[0-9a-f]{8}$/i;
       const byName: Record<string, { name: string; committed: number; called: number; deals: number }> = {};
       for (const v of Object.values(byId)) {
         const key = v.name.trim().toLowerCase();
         if (!byName[key]) byName[key] = { name: v.name, committed: 0, called: 0, deals: 0 };
+        // Prefer a proper name over a UUID-like placeholder
+        if (uuidLike.test(byName[key].name.trim()) && !uuidLike.test(v.name.trim())) {
+          byName[key].name = v.name;
+        }
         byName[key].committed += v.committed;
         byName[key].called += v.called;
         byName[key].deals += v.deals;
