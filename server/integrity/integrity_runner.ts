@@ -184,8 +184,9 @@ async function runCheckGroup(
   let fields_checked = 0;
 
   // ── Fetch from Airtable ───────────────────────────────────────────────────
+  // "Record ID" is Airtable's built-in ID — always returned as rec.id, never add to fields[]
   const atFields = [
-    group.airtable_join_field,
+    ...(group.airtable_join_field !== "Record ID" ? [group.airtable_join_field] : []),
     ...group.fields.map(f => f.airtable_field),
   ].filter((v, i, a) => a.indexOf(v) === i); // deduplicate
 
@@ -219,7 +220,10 @@ async function runCheckGroup(
 
   // ── Compare each Airtable record ──────────────────────────────────────────
   for (const rec of atRecords) {
-    const atKey = safeStr(rec.fields[group.airtable_join_field]);
+    // "Record ID" is Airtable's built-in record ID — returned as rec.id, not rec.fields["Record ID"]
+    const atKey = group.airtable_join_field === "Record ID"
+      ? rec.id
+      : safeStr(rec.fields[group.airtable_join_field]);
     if (!atKey) continue;
 
     records_checked++;
@@ -254,7 +258,11 @@ async function runCheckGroup(
   // ── Count check: flag if Supabase has more rows than Airtable ────────────
   // (records in Supabase with no Airtable counterpart — orphans)
   const atKeys = new Set(
-    atRecords.map(r => safeStr(r.fields[group.airtable_join_field]).toLowerCase()).filter(Boolean)
+    atRecords.map(r =>
+      group.airtable_join_field === "Record ID"
+        ? r.id.toLowerCase()
+        : safeStr(r.fields[group.airtable_join_field]).toLowerCase()
+    ).filter(Boolean)
   );
   const orphanCount = Array.from(sbMap.keys()).filter(k => !atKeys.has(k)).length;
   if (orphanCount > 0) {

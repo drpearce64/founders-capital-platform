@@ -253,9 +253,12 @@ export const INTEGRITY_CHECKS: CheckGroup[] = [
     airtable_table: "Deals",
     airtable_table_id: AIRTABLE_TABLES.deals,
     supabase_table: "entities",
-    airtable_filter: "NOT(OR({Status}='Dead',{Status}='Pass',{Status}='Pipeline',{Status}='Prospecting'))",
-    airtable_join_field: "Deal Code",
-    supabase_join_field: "deal_code",
+    // Only check deal types that map to entity records: -FC, -DEL, -YC*
+    // Join via Airtable Record ID ↔ entities.airtable_deal_id (no deal_code column in entities)
+    // Added: 2026-06-11 — fix broken join (entities has airtable_deal_id, not deal_code)
+    airtable_filter: "AND(NOT(OR({Status}='Dead',{Status}='Pass',{Status}='Pipeline',{Status}='Prospecting')),OR(RIGHT({Deal Code},3)='-FC',RIGHT({Deal Code},4)='-DEL',SEARCH('-YC',{Deal Code})>0))",
+    airtable_join_field: "Record ID",
+    supabase_join_field: "airtable_deal_id",
     fields: DEALS_ENTITIES_FIELDS,
   },
   {
@@ -263,9 +266,16 @@ export const INTEGRITY_CHECKS: CheckGroup[] = [
     airtable_table: "Deals",
     airtable_table_id: AIRTABLE_TABLES.deals,
     supabase_table: "investments",
-    airtable_filter: "NOT(OR({Status}='Dead',{Status}='Pass',{Status}='Pipeline',{Status}='Prospecting'))",
-    airtable_join_field: "Deal Code",
-    supabase_join_field: "notes",  // investments.notes stores deal_code per sync script
+    // Only check deal types that are actually synced to investments:
+    // -FC (direct FC investments), -DEL (Delaware SPVs), -YCW* / -YCX* (YC SPVs)
+    // Exclude: -OD (Other Deals / co-investor only), -TF (Third-Party Fund),
+    //          -JP (Joint Participation), -SYDFS, and plain pipeline/dead records
+    airtable_filter: "AND(NOT(OR({Status}='Dead',{Status}='Pass',{Status}='Pipeline',{Status}='Prospecting')),OR(RIGHT({Deal Code},3)='-FC',RIGHT({Deal Code},4)='-DEL',SEARCH('-YC',{Deal Code})>0))",
+    // Join via Airtable Record ID ↔ investments.airtable_deal_id — avoids collision
+    // where two investments share the same deal code (e.g. PER-1024-FC has two SPVs)
+    // Added: 2026-06-11 — fix PER-1024-FC join collision
+    airtable_join_field: "Record ID",
+    supabase_join_field: "airtable_deal_id",
     fields: DEALS_INVESTMENTS_FIELDS,
   },
   {
