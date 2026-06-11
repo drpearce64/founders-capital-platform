@@ -317,3 +317,4 @@ export const INTEGRITY_CHECKS: CheckGroup[] = [
 // 1%  — monetary amounts (GBP/USD FX rounding headroom)
 // 0   — rates, enums, dates, currency codes, record counts
 // string — case-insensitive + trimmed before comparison
+# Last updated: 2026-06-11T06:29:21Z
