@@ -203,13 +203,24 @@ async function runCheckGroup(
     ...group.fields.map(f => f.supabase_column),
   ].filter((v, i, a) => a.indexOf(v) === i).join(", ");
 
-  const { data: sbRows, error: sbErr } = await supabase
-    .from(group.supabase_table)
-    .select(sbColumns);
-
-  if (sbErr) {
-    throw new Error(`[${group.name}] Supabase fetch failed: ${sbErr.message}`);
+  // Paginated — Supabase default cap is 1000 rows; investors has 2400+ rows
+  const allSbRows: Record<string, unknown>[] = [];
+  const PAGE_SIZE = 1000;
+  let sbPage = 0;
+  while (true) {
+    const { data: page, error: sbErr } = await supabase
+      .from(group.supabase_table)
+      .select(sbColumns)
+      .range(sbPage * PAGE_SIZE, (sbPage + 1) * PAGE_SIZE - 1);
+    if (sbErr) {
+      throw new Error(`[${group.name}] Supabase fetch failed (page ${sbPage}): ${sbErr.message}`);
+    }
+    allSbRows.push(...(page ?? []));
+    if (!page || page.length < PAGE_SIZE) break;
+    sbPage++;
+    if (sbPage > 20) break; // safety cap at 20k rows
   }
+  const sbRows = allSbRows;
 
   // Build join map: joinKey → supabase row
   const sbMap = new Map<string, Record<string, unknown>>();
