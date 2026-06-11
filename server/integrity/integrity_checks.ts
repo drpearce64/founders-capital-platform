@@ -59,7 +59,7 @@ export const AIRTABLE_BASE_ID = "appXSAE1n2PvdCQB1";
 
 export const AIRTABLE_TABLES = {
   deals:       "tbln6AszmitsErPgh",
-  members:     "tblFp3PuEfCbrHFXM",
+  members:     "tblQb339jVtJ6cwCM",   // Fixed 2026-06-11: was tblFp3PuEfCbrHFXM (wrong table)
   commitments: "tblRI3sgfam7JSLuk",
 } as const;
 
@@ -300,10 +300,10 @@ export const INTEGRITY_CHECKS: CheckGroup[] = [
   },
   {
     name: "YC Deals → yc_deals",
-    airtable_table: "Deals (YC)",
-    airtable_table_id: AIRTABLE_TABLES.deals,
+    airtable_table: "Deals (YC filter)",
+    airtable_table_id: AIRTABLE_TABLES.deals,   // YC deals live in main Deals table
     supabase_table: "yc_deals",
-    airtable_filter: "SEARCH('(YC', {CompanyName})>0",
+    airtable_filter: "AND(SEARCH('-YC', {Deal Code})>0, NOT(OR({Status}='Dead',{Status}='Pass',{Status}='Pipeline',{Status}='Prospecting')))",
     airtable_join_field: "Deal Code",
     supabase_join_field: "deal_code",
     fields: YC_DEALS_FIELDS,
