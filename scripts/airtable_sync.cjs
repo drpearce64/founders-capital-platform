@@ -7,19 +7,21 @@
  *   Commitments  → investor_commitments
  *   Deals (YC)   → yc_deals + yc_investors + yc_holdings
  *
- * Run:  node scripts/airtable_sync.js
- * Env:  SUPABASE_URL, SUPABASE_ANON_KEY, AIRTABLE_PAT, AIRTABLE_BASE_ID
+ * Run:  node scripts/airtable_sync.cjs
+ * Env:  SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AIRTABLE_API_KEY (or AIRTABLE_PAT), AIRTABLE_BASE_ID
  */
 
 "use strict";
 
 const { createClient } = require("@supabase/supabase-js");
+const { buildRateTable, rateForDate, convertToUsd } = require("./fx_logic.cjs");
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || "https://yoyrwrdzivygufbzckdv.supabase.co";
-const SUPABASE_KEY      = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
-const AIRTABLE_PAT      = process.env.AIRTABLE_PAT;
+// Sync writes use the service-role key (bypasses RLS). No anon fallback — fail loud if missing.
+const SUPABASE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const AIRTABLE_PAT      = process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT;
 const AIRTABLE_BASE_ID  = process.env.AIRTABLE_BASE_ID || "appXSAE1n2PvdCQB1";
 
 const AIRTABLE_TABLES = {
@@ -27,6 +29,7 @@ const AIRTABLE_TABLES = {
   commitments:  "tblRI3sgfam7JSLuk",
   deals:        "tbln6AszmitsErPgh",
   transactions: "tblY3GpWW9Gb1orKb",
+  currency_exchange: "tblJ29J4DcyiQfVnx",
 };
 
 // Cayman entity IDs — used to route transactions to the correct entity
@@ -42,8 +45,10 @@ const CAYMAN_SUB_ACCOUNTS = new Set([
 const AIRTABLE_API = "https://api.airtable.com/v0";
 
 // ── Supabase client (bundled by esbuild — no external dep needed at runtime) ───
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Constructed only when the service-role key is present, so the module can be
+// require()'d for unit tests (pure helpers) without env vars set. main() throws
+// up-front if the key is missing (see env check below).
+const supabase = SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ── Airtable fetch helper ────────────────────────────────────────────────────
 
@@ -141,6 +146,29 @@ function mapInstrumentType(val) {
   if (v.includes("warrant")) return "warrant";
   if (v.includes("loan") || v.includes("debt")) return "loan";
   return "other";
+}
+
+// ── Currency / called-capital / fee helpers (pure, unit-tested) ──────────────
+
+function normalizeCurrency(val) {
+  if (!val) return "USD";
+  const v = String(Array.isArray(val) ? val[0] : val).toUpperCase();
+  if (v.includes("USD") || v.includes("$")) return "USD";
+  if (v.includes("GBP") || v.includes("\u00A3")) return "GBP";
+  if (v.includes("EUR") || v.includes("\u20AC")) return "EUR";
+  if (v.includes("KYD")) return "KYD";
+  return "USD";
+}
+
+// Capital called can never exceed the commitment; cash above it is fee.
+function cappedCalled(committed, received) {
+  return received > 0 ? Math.min(received, committed) : committed;
+}
+
+// Access fee = cash received above the capital commitment (0 if not over-funded).
+function feeAmount(committed, received) {
+  const c = Number(committed) || 0, r = Number(received) || 0;
+  return r > c ? r - c : 0;
 }
 
 // ── Counters ─────────────────────────────────────────────────────────────────
@@ -278,7 +306,8 @@ async function syncDeals() {
 
     const company_name  = f["CompanyName"] ? String(f["CompanyName"]).trim() : null;
     const deal_code     = f["Deal Code"]   ? String(f["Deal Code"]).trim()   : null;
-    if (!company_name) {
+    // Skip blank and test/placeholder deals (e.g. "US TEST DEAL") so they never reach the portal.
+    if (!company_name || /\btest\b/i.test(company_name)) {
       stats.spvs.skipped++;
       continue;
     }
@@ -462,6 +491,10 @@ async function syncCommitments() {
 
   console.log(`  Resolved ${Object.keys(investorMap).length} investors, ${Object.keys(entityMap).length} entities from Supabase`);
 
+  const fxRecords = await fetchAirtableTable(AIRTABLE_TABLES.currency_exchange, ["Date", "GBP-USD", "USD-EUR"]);
+  const rateTable = buildRateTable(fxRecords);
+  console.log(`  Loaded ${rateTable.length} FX rate rows`);
+
   // ── Phase 2: Build rows ────────────────────────────────────────────────────
   const rows = [];
   const skipLogs = [];
@@ -470,9 +503,10 @@ async function syncCommitments() {
     const f = rec.fields;
     const airtable_id = rec.id;
 
-    // Skip cancelled commitments
+    // Skip cancelled commitments (out of scope, not a failure)
     if (f["Commitment cancelled"] === "Yes") {
       stats.commitments.skipped++;
+      skipLogs.push({ airtable_id, reason: "cancelled" });
       continue;
     }
 
@@ -481,6 +515,7 @@ async function syncCommitments() {
 
     if (!member_airtable_id || !deal_airtable_id) {
       stats.commitments.skipped++;
+      skipLogs.push({ airtable_id, reason: "missing_member_or_deal_link", member_airtable_id, deal_airtable_id });
       continue;
     }
 
@@ -489,7 +524,7 @@ async function syncCommitments() {
 
     if (!investor_id || !entity_id) {
       stats.commitments.skipped++;
-      skipLogs.push({ airtable_id, member_airtable_id, deal_airtable_id });
+      skipLogs.push({ airtable_id, reason: "unresolved_ref", member_airtable_id, deal_airtable_id, missing: !investor_id ? "investor" : "entity" });
       continue;
     }
 
@@ -498,13 +533,18 @@ async function syncCommitments() {
       inv_status === "Funds received" ? "fully_drawn" :
       inv_status === "Sent"           ? "called"      : "active";
 
-    const committed  = safeNum(f["Final Investment Value"]) ?? 0;
-    const received   = safeNum(firstStr(f["Actually Received (from Investments)"])) ?? 0;
-    const fee_amount = safeNum(f["Fee"]) ?? 0;
-    // called_amount = amount actually received (funds sent by LP).
-    // If Airtable shows received > 0, use that; otherwise fall back to committed
-    // so fully-paid LPs are not shown as uncalled.
-    const called = received > 0 ? received : committed;
+    const committed = safeNum(f["Final Investment Value"]) ?? 0;
+    const received  = safeNum(firstStr(f["Actually Received (from Investments)"])) ?? 0;
+    const currency  = normalizeCurrency(f["Wiring currency"]);
+    // Capital called never exceeds the commitment; cash above it is access fee.
+    const called = cappedCalled(committed, received);
+    const fee    = feeAmount(committed, received);
+    // USD conversion at the rate on/before the commitment date (originals stay in currency).
+    const rateRow = rateForDate(rateTable, safeDate(f["Created"]) ?? new Date().toISOString().split("T")[0]);
+    const cUsd  = convertToUsd(committed, currency, rateRow);
+    const clUsd = convertToUsd(called,    currency, rateRow);
+    const fnUsd = convertToUsd(received,  currency, rateRow);
+    const feUsd = convertToUsd(fee,       currency, rateRow);
 
     rows.push({
       airtable_id,
@@ -513,12 +553,18 @@ async function syncCommitments() {
       committed_amount: committed,
       called_amount:    called,
       funded_amount:    received,
+      fee_amount:       fee,
+      committed_amount_usd: cUsd.usd,
+      called_amount_usd:    clUsd.usd,
+      funded_amount_usd:    fnUsd.usd,
+      fee_amount_usd:       feUsd.usd,
+      fx_rate_to_usd:       cUsd.rate,
+      fx_rate_date:         cUsd.rateDate,
+      fx_basis:             cUsd.basis,
       status:           commit_status,
       fee_rate:         safeNum(f["Discounted fee"]) ?? 0.06,
       carry_rate:       safeNum(f["Carry %"]) ? (safeNum(f["Carry %"]) / 100) : 0.20,
-      currency:         f["Wiring currency"]
-        ? String(f["Wiring currency"]).includes("USD") ? "USD" : "GBP"
-        : "USD",
+      currency,
       commitment_date:  safeDate(f["Created"]) ?? new Date().toISOString().split("T")[0],
     });
   }
@@ -551,12 +597,23 @@ async function syncCommitments() {
     }
   }
 
-  // Single summary log (skips logged separately, keeps table clean)
-  await logSync("investor_commitments", null, "batch_upsert", "ok",
-    `upserted:${stats.commitments.upserted} skipped:${stats.commitments.skipped} errors:${stats.commitments.errors} skip_refs:${skipLogs.length}`);
+  const skipByReason = {};
+  for (const sl of skipLogs) { (skipByReason[sl.reason] ||= []).push(sl); }
+  for (const [reason, list] of Object.entries(skipByReason)) {
+    await logSync("investor_commitments", null, "skip", "skip", JSON.stringify({
+      reason, count: list.length, airtable_ids: list.map(x => x.airtable_id),
+    }));
+  }
+  stats.commitments.unresolved_refs = (skipByReason["unresolved_ref"] || []).length;
 
-  if (skipLogs.length > 0) {
-    console.log(`  ⚠ ${skipLogs.length} commitments skipped — missing investor or entity reference`);
+  await logSync("investor_commitments", null, "batch_upsert",
+    stats.commitments.errors > 0 ? "error" : "ok",
+    `upserted:${stats.commitments.upserted} skipped:${stats.commitments.skipped} ` +
+    `errors:${stats.commitments.errors} unresolved_refs:${stats.commitments.unresolved_refs} ` +
+    `cancelled:${(skipByReason["cancelled"]||[]).length} missing_link:${(skipByReason["missing_member_or_deal_link"]||[]).length}`);
+
+  if (stats.commitments.unresolved_refs > 0) {
+    console.warn(`  ⚠ ${stats.commitments.unresolved_refs} commitments have an UNRESOLVED reference (member/deal not in Supabase) — review the skip log.`);
   }
 
   console.log(`  ✓ commitments — upserted: ${stats.commitments.upserted}, skipped: ${stats.commitments.skipped}, errors: ${stats.commitments.errors}`);
@@ -746,7 +803,7 @@ async function syncYC() {
     await supabase.rpc ? null : null; // no rpc needed — use a direct update
     await fetch(
       `${process.env.SUPABASE_URL}/rest/v1/rpc/refresh_yc_holdings_amounts`,
-      { method: "POST", headers: { apikey: process.env.SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`, "Content-Type": "application/json" }, body: "{}" }
+      { method: "POST", headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" }, body: "{}" }
     ).catch(() => null); // non-fatal — run separately if needed
   } catch { /* non-fatal */ }
 
@@ -921,8 +978,8 @@ async function main() {
   console.log(`  ${new Date().toISOString()}`);
   console.log("═══════════════════════════════════════════════════");
 
-  if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error("Missing SUPABASE_URL / SUPABASE_ANON_KEY");
-  if (!AIRTABLE_PAT)                  throw new Error("Missing AIRTABLE_PAT");
+  if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
+  if (!AIRTABLE_PAT)                  throw new Error("Missing AIRTABLE_API_KEY / AIRTABLE_PAT");
 
   const t0 = Date.now();
 
@@ -984,7 +1041,8 @@ async function main() {
   });
 }
 
-main().catch(async err => {
+async function runCli() {
+  return main().catch(async err => {
   console.error("SYNC FAILED:", err);
   // Write a failure row so /api/sync/airtable/status reflects the error
   try {
@@ -1000,5 +1058,24 @@ main().catch(async err => {
   } catch (logErr) {
     console.error("Failed to write error log:", logErr.message);
   }
-  process.exit(1);
-});
+    process.exit(1);
+  });
+}
+
+function exitCodeFromStats() {
+  const errors =
+    stats.investors.errors + stats.spvs.errors + stats.investments.errors +
+    stats.commitments.errors + stats.yc_deals.errors + stats.yc_investors.errors +
+    stats.transactions.errors;
+  return errors > 0 ? 1 : 0;
+}
+
+if (require.main === module) {
+  runCli().then(() => {
+    const code = exitCodeFromStats();
+    if (code !== 0) console.error(`Sync finished with record-level errors — exiting ${code}.`);
+    process.exit(code);
+  });
+}
+
+module.exports = { normalizeCurrency, cappedCalled, feeAmount, mapInvestmentStatus, mapStage, mapInstrumentType, exitCodeFromStats };
