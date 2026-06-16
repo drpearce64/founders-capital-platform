@@ -475,10 +475,7 @@ export default function PLModel() {
       </Card>
 
       <p className="text-xs pb-4" style={{ color: "hsl(var(--muted-foreground))" }}>
-        Data sourced from Founders Capital Supabase database ·{" "}
-        <a href="https://yoyrwrdzivygufbzckdv.supabase.co" target="_blank" rel="noreferrer" className="underline">
-          yoyrwrdzivygufbzckdv.supabase.co
-        </a>
+        Data sourced from the Founders Capital database
       </p>
     </div>
   );

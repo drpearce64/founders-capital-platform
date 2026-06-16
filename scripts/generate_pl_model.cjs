@@ -6,7 +6,7 @@
  * Usage: node generate_pl_model.js <output_path>
  *   output_path defaults to /tmp/fc_pl_model.xlsx
  *
- * Requires env vars: SUPABASE_URL, SUPABASE_ANON_KEY (set in Railway)
+ * Requires env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (set in Railway)
  */
 
 "use strict";
@@ -40,8 +40,7 @@ const C = {
 function supabaseFetch(table, select = "*", filters = "") {
   return new Promise((resolve, reject) => {
     const SUPABASE_URL = process.env.SUPABASE_URL || "https://yoyrwrdzivygufbzckdv.supabase.co";
-    const ANON_KEY     = process.env.SUPABASE_ANON_KEY ||
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
+    const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     const url = new URL(`${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}${filters ? "&" + filters : ""}`);
     const lib  = url.protocol === "https:" ? https : http;
@@ -49,8 +48,8 @@ function supabaseFetch(table, select = "*", filters = "") {
     const req = lib.request(url.toString(), {
       method: "GET",
       headers: {
-        "apikey":        ANON_KEY,
-        "Authorization": `Bearer ${ANON_KEY}`,
+        "apikey":        SERVICE_KEY,
+        "Authorization": `Bearer ${SERVICE_KEY}`,
         "Content-Type":  "application/json",
       },
     }, (res) => {

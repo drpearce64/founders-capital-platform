@@ -5,7 +5,7 @@
  *
  * Called nightly by the Railway cron.
  * Requires env vars:
- *   SUPABASE_URL, SUPABASE_ANON_KEY
+ *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN
  */
 
@@ -16,8 +16,7 @@ const http   = require("http");
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const SUPABASE_URL  = process.env.SUPABASE_URL  || "https://yoyrwrdzivygufbzckdv.supabase.co";
-const ANON_KEY      = process.env.SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
+const SERVICE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Keywords that suggest an email is an invoice/bill
 const INVOICE_KEYWORDS = [
@@ -64,7 +63,7 @@ function httpRequest(url, options = {}, body = null) {
 async function supabaseGet(table, filter = "") {
   const url = `${SUPABASE_URL}/rest/v1/${table}?${filter}`;
   const r = await httpRequest(url, {
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
   });
   return r.body;
 }
@@ -75,8 +74,8 @@ async function supabaseUpsert(table, data) {
     {
       method: "POST",
       headers: {
-        apikey: ANON_KEY,
-        Authorization: `Bearer ${ANON_KEY}`,
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
         "Content-Type": "application/json",
         Prefer: "resolution=merge-duplicates,return=representation",
       },
