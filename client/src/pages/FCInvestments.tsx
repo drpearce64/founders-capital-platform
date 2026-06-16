@@ -89,11 +89,6 @@ const fmtUsd = (n: number) => {
 };
 
 const fmtMoic = (m: number) => `${m.toFixed(2)}x`;
-// Derive MOIC from USD present value / cost so it can never contradict the
-// displayed cost & fair value (the stored `moic` field could). Null when cost is 0.
-const derivedMoic = (inv: FCInvestment): number | null =>
-  inv.fc_invested_usd > 0 ? inv.fc_pv_usd / inv.fc_invested_usd : null;
-const fmtMoicOrDash = (m: number | null): string => (m == null ? "\u2014" : `${m.toFixed(2)}x`);
 
 // Format a non-USD source currency amount with its symbol
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -301,7 +296,7 @@ function InvestmentCard({ inv }: { inv: FCInvestment }) {
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">MOIC</p>
-            <p className={`text-sm font-mono ${moicColor(derivedMoic(inv) ?? 0)}`}>{fmtMoicOrDash(derivedMoic(inv))}</p>
+            <p className={`text-sm font-mono ${moicColor(inv.moic)}`}>{fmtMoic(inv.moic)}</p>
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Unrealised P&L</p>
@@ -385,7 +380,7 @@ export default function FCInvestments() {
     if (filterType !== "all") list = list.filter(i => i.deal_type === filterType);
 
     list.sort((a, b) => {
-      if (sortBy === "moic") return (derivedMoic(b) ?? 0) - (derivedMoic(a) ?? 0);
+      if (sortBy === "moic") return b.moic - a.moic;
       if (sortBy === "invested") return b.fc_invested_usd - a.fc_invested_usd;
       if (sortBy === "pv") return b.fc_pv_usd - a.fc_pv_usd;
       // date
@@ -653,7 +648,7 @@ export default function FCInvestments() {
                             {fmtUsd(inv.fc_pv_usd)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <span className={`font-mono text-sm ${moicColor(derivedMoic(inv) ?? 0)}`}>{fmtMoicOrDash(derivedMoic(inv))}</span>
+                            <span className={`font-mono text-sm ${moicColor(inv.moic)}`}>{fmtMoic(inv.moic)}</span>
                           </TableCell>
                           <TableCell className="text-right">
                             <span className={`font-mono text-sm ${appreciation >= 0 ? "text-green-600" : "text-red-500"}`}>

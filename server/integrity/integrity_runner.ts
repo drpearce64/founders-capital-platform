@@ -297,12 +297,12 @@ async function runCheckGroup(
 
 export async function runIntegrityCheck(): Promise<IntegrityReport> {
   const startMs = Date.now();
-  const pat = process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT;
-  if (!pat) throw new Error("AIRTABLE_API_KEY / AIRTABLE_PAT not configured");
+  const pat = process.env.AIRTABLE_PAT;
+  if (!pat) throw new Error("AIRTABLE_PAT not configured");
 
   const supabaseUrl = process.env.SUPABASE_URL ?? "https://yoyrwrdzivygufbzckdv.supabase.co";
-  // Service-role key only (no anon fallback) — integrity reads must bypass RLS.
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  const supabaseKey = process.env.SUPABASE_ANON_KEY ??
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const allMismatches: Mismatch[] = [];

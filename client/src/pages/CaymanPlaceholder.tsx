@@ -13,9 +13,6 @@ export default function CaymanPlaceholder({ title, description }: Props) {
     >
       <div className="text-center space-y-3 max-w-md">
         <Clock size={36} style={{ color: "hsl(var(--primary))", margin: "0 auto" }} />
-        <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--primary))" }}>
-          Coming soon
-        </p>
         <h1 className="text-xl font-bold tracking-tight" style={{ color: "hsl(var(--foreground))" }}>
           {title}
         </h1>

@@ -4,7 +4,7 @@
  * Run nightly alongside the Airtable sync.
  *
  * Requires env vars:
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *   SUPABASE_URL, SUPABASE_ANON_KEY
  *   XERO_CLIENT_ID, XERO_CLIENT_SECRET, XERO_REFRESH_TOKEN
  *   XERO_TENANT_ID
  */
@@ -15,7 +15,8 @@ const https = require("https");
 const http  = require("http");
 
 const SUPABASE_URL = process.env.SUPABASE_URL  || "https://yoyrwrdzivygufbzckdv.supabase.co";
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY     = process.env.SUPABASE_ANON_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
 const XERO_TENANT  = process.env.XERO_TENANT_ID || "b7a06316-557d-41ba-8002-50b541b55e2d";
 
 // Series detection — applied to invoice description + contact name
@@ -107,8 +108,8 @@ async function supabaseUpsert(rows) {
     {
       method: "POST",
       headers: {
-        apikey: SERVICE_KEY,
-        Authorization: `Bearer ${SERVICE_KEY}`,
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${ANON_KEY}`,
         "Content-Type": "application/json",
         Prefer: "resolution=merge-duplicates,return=minimal",
       },
@@ -121,7 +122,7 @@ async function supabaseUpsert(rows) {
 async function getEntityMap() {
   const r = await httpRequest(
     `${SUPABASE_URL}/rest/v1/entities?select=id,short_code&archived_at=is.null`,
-    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+    { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } },
   );
   const map = {};
   (r.body || []).forEach(e => { map[e.short_code] = e.id; });

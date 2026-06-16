@@ -62,10 +62,10 @@ async function buildAll() {
 async function copyScripts() {
   await mkdir("dist/scripts", { recursive: true });
 
-  // Bundle airtable_sync.cjs with esbuild so @supabase/supabase-js is inlined.
+  // Bundle airtable_sync.js with esbuild so @supabase/supabase-js is inlined.
   // Output as .cjs so Node doesn't treat it as ESM (package.json has "type":"module").
   await esbuild({
-    entryPoints: ["scripts/airtable_sync.cjs"],
+    entryPoints: ["scripts/airtable_sync.js"],
     platform: "node",
     bundle: true,
     format: "cjs",
