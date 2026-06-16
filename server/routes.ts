@@ -37,14 +37,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const results: Record<string, any> = {
       node: process.version,
       env_supabase_url: process.env.SUPABASE_URL ? "set" : "missing",
-      env_anon_key: process.env.SUPABASE_ANON_KEY ? "set" : "missing",
+      env_service_role_key: process.env.SUPABASE_SERVICE_ROLE_KEY ? "set" : "missing",
     };
-    // Test raw HTTPS fetch to Supabase
+    // Test raw HTTPS fetch to Supabase (uses the service-role key the server runs on)
     try {
-      const r = await fetch("https://yoyrwrdzivygufbzckdv.supabase.co/rest/v1/entities?limit=1", {
+      const supaUrl = process.env.SUPABASE_URL || "https://yoyrwrdzivygufbzckdv.supabase.co";
+      const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+      const r = await fetch(`${supaUrl}/rest/v1/entities?limit=1`, {
         headers: {
-          apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y",
-          Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y",
+          apikey: supaKey,
+          Authorization: `Bearer ${supaKey}`,
         },
         signal: AbortSignal.timeout(10000),
       });
@@ -567,7 +569,7 @@ Founders Capital`;
     const [entitiesRes, commitmentsRes, investmentsRes, callsRes] = await Promise.all([
       supabase.from("entities").select("*, investments(company_name, company_website, status)")
         .like("short_code", "FC-VECTOR-%").is("archived_at", null),
-      supabase.from("investor_commitments").select("committed_amount, called_amount, status, entity_id")
+      supabase.from("investor_commitments").select("committed_amount, called_amount, committed_amount_usd, called_amount_usd, currency, status, entity_id")
         .in("entity_id", vectorIds).is("archived_at", null),
       supabase.from("investments").select("cost_basis, current_fair_value, company_name, entity_id, status, entities(short_code, jurisdiction)")
         .in("entity_id", vectorIds).is("archived_at", null),
@@ -581,8 +583,9 @@ Founders Capital`;
     const commitments = commitmentsRes.data || [];
     const investments = investmentsRes.data || [];
 
-    const totalCommitted = commitments.reduce((s, c) => s + Number(c.committed_amount), 0);
-    const totalCalled = commitments.reduce((s, c) => s + Number(c.called_amount), 0);
+    // Cross-currency totals: sum the USD columns (fall back to original until backfilled/synced).
+    const totalCommitted = commitments.reduce((s, c) => s + Number(c.committed_amount_usd ?? c.committed_amount), 0);
+    const totalCalled = commitments.reduce((s, c) => s + Number(c.called_amount_usd ?? c.called_amount), 0);
     const totalOutstanding = totalCommitted - totalCalled;
     const totalInvested = investments.reduce((s, i) => s + Number(i.cost_basis), 0);
     const totalFairValue = investments.reduce((s, i) => s + Number(i.current_fair_value || i.cost_basis), 0);
@@ -1116,9 +1119,10 @@ Founders Capital`;
       };
     }));
 
-    // 4. Totals
-    const totalCommitted = commitments.reduce((s: number, c: any) => s + Number(c.committed_amount), 0);
-    const totalCalled = commitments.reduce((s: number, c: any) => s + Number(c.called_amount || 0), 0);
+    // 4. Totals — an LP's commitments span multiple SPVs (mixed USD/GBP), so sum
+    // the USD columns (fall back to original until backfilled/synced).
+    const totalCommitted = commitments.reduce((s: number, c: any) => s + Number(c.committed_amount_usd ?? c.committed_amount), 0);
+    const totalCalled = commitments.reduce((s: number, c: any) => s + Number((c.called_amount_usd ?? c.called_amount) || 0), 0);
 
     const payload = {
       investor: {
@@ -1186,8 +1190,9 @@ Founders Capital`;
       .eq("investor_id", investor_id)
       .is("archived_at", null);
 
-    const totalCommitted = (commitments || []).reduce((s: number, c: any) => s + Number(c.committed_amount), 0);
-    const totalCalled    = (commitments || []).reduce((s: number, c: any) => s + Number(c.called_amount || 0), 0);
+    // Cross-SPV LP rollup (mixed USD/GBP) → sum USD columns, fall back to original.
+    const totalCommitted = (commitments || []).reduce((s: number, c: any) => s + Number(c.committed_amount_usd ?? c.committed_amount), 0);
+    const totalCalled    = (commitments || []).reduce((s: number, c: any) => s + Number((c.called_amount_usd ?? c.called_amount) || 0), 0);
 
     const positions = (commitments || []).map((c: any) => {
       const inv = Array.isArray(c.entities?.investments) ? c.entities.investments[0] : c.entities?.investments;
@@ -1300,19 +1305,20 @@ Founders Capital`;
       }
     }
 
-    // In dev: __dirname = server/, script at ../scripts/airtable_sync.js
-    // In prod: __dirname = dist/,   script at scripts/airtable_sync.js (copied by build)
+    // In dev: __dirname = server/, script at ../scripts/airtable_sync.cjs
+    // In prod: __dirname = dist/,   script at scripts/airtable_sync.cjs (bundled by build)
     const scriptPath = path.join(__dirname, "scripts", "airtable_sync.cjs");
     const SUPA_URL = process.env.SUPABASE_URL || "https://yoyrwrdzivygufbzckdv.supabase.co";
-    const SUPA_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlveXJ3cmR6aXZ5Z3VmYnpja2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzgyNzIsImV4cCI6MjA5MjQ1NDI3Mn0.VP8E1-R76I4FckEx-pOaIb1YEeiV0mENBNUJnQGs13Y";
+    // Sync writes use the service-role key (bypasses RLS). No anon fallback.
+    const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
     const child = fork(scriptPath, [], {
       env: {
         ...process.env,
-        AIRTABLE_PAT:      process.env.AIRTABLE_PAT     ?? "",
+        AIRTABLE_PAT:      (process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT) ?? "",
         AIRTABLE_BASE_ID:  process.env.AIRTABLE_BASE_ID ?? "appXSAE1n2PvdCQB1",
-        SUPABASE_URL:      SUPA_URL,
-        SUPABASE_ANON_KEY: SUPA_KEY,
+        SUPABASE_URL:              SUPA_URL,
+        SUPABASE_SERVICE_ROLE_KEY: SUPA_KEY,
       },
       detached: false,
       silent: true,
@@ -1363,8 +1369,8 @@ Founders Capital`;
     const child = fork(scriptPath, [], {
       env: {
         ...process.env,
-        SUPABASE_URL:          process.env.SUPABASE_URL          ?? "https://yoyrwrdzivygufbzckdv.supabase.co",
-        SUPABASE_ANON_KEY:     process.env.SUPABASE_ANON_KEY     ?? "",
+        SUPABASE_URL:              process.env.SUPABASE_URL              ?? "https://yoyrwrdzivygufbzckdv.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
         GMAIL_CLIENT_ID:       process.env.GMAIL_CLIENT_ID       ?? "",
         GMAIL_CLIENT_SECRET:   process.env.GMAIL_CLIENT_SECRET   ?? "",
         GMAIL_REFRESH_TOKEN:   process.env.GMAIL_REFRESH_TOKEN   ?? "",
@@ -1646,7 +1652,7 @@ Founders Capital`;
     const dealCode = String((req.query as any).deal_code ?? "").trim().toUpperCase();
     if (!dealCode) return res.status(400).json({ error: "deal_code is required" });
 
-    const PAT = process.env.AIRTABLE_PAT;
+    const PAT = process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT;
     if (!PAT) return res.status(500).json({ error: "AIRTABLE_PAT not configured" });
 
     try {
@@ -1730,7 +1736,7 @@ Founders Capital`;
       return res.status(400).json({ error: "airtable_record_id, deal_code, short_code and name are required" });
     }
 
-    const PAT = process.env.AIRTABLE_PAT;
+    const PAT = process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT;
     if (!PAT) return res.status(500).json({ error: "AIRTABLE_PAT not configured" });
 
     try {
@@ -1933,7 +1939,7 @@ Founders Capital`;
 
   // GET /api/debug/airtable-fields/:recordId — temporary debug: dump raw Airtable field keys + attachment filenames
   app.get("/api/debug/airtable-fields/:recordId", async (req, res) => {
-    const PAT = process.env.AIRTABLE_PAT!;
+    const PAT = (process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT)!;
     const r = await fetch(`https://api.airtable.com/v0/appXSAE1n2PvdCQB1/tbln6AszmitsErPgh/${req.params.recordId}`, { headers: { Authorization: `Bearer ${PAT}` } });
     if (!r.ok) return res.status(r.status).json({ error: await r.text() });
     const data = await r.json() as any;
@@ -1953,7 +1959,7 @@ Founders Capital`;
 
   // POST /api/sync/spa-documents — pull executed SPAs from Airtable and store in Supabase
   app.post("/api/sync/spa-documents", async (_req, res) => {
-    const AIRTABLE_PAT  = process.env.AIRTABLE_PAT!;
+    const AIRTABLE_PAT  = (process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT)!;
     const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
     const DEALS_TABLE   = "tbln6AszmitsErPgh";
 
@@ -2307,7 +2313,7 @@ Founders Capital`;
     const tmpFile = path.join(os.tmpdir(), `fc_pl_model_${Date.now()}.xlsx`);
 
     try {
-      // Run the generator (inherits SUPABASE_URL + SUPABASE_ANON_KEY from env)
+      // Run the generator (inherits SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY from env)
       await execFileAsync(process.execPath, [generatorPath, tmpFile], {
         timeout: 30_000,
         env: process.env,
@@ -3131,7 +3137,7 @@ Founders Capital`;
     try {
       const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
       const AIRTABLE_TABLE = "tbln6AszmitsErPgh";
-      const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
+      const AIRTABLE_PAT = process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT;
       if (!AIRTABLE_PAT) return res.status(500).json({ error: "no PAT" });
       // Support ?name=OpenAI to filter by company name (partial, case-insensitive)
       const nameFilter = ((_req as any).query?.name ?? "").toString().toLowerCase();
@@ -3174,7 +3180,7 @@ Founders Capital`;
     try {
       const AIRTABLE_BASE = "appXSAE1n2PvdCQB1";
       const AIRTABLE_TABLE = "tbln6AszmitsErPgh";
-      const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
+      const AIRTABLE_PAT = process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_PAT;
 
       if (!AIRTABLE_PAT) {
         return res.status(500).json({ error: "AIRTABLE_PAT not configured on server" });
