@@ -1,0 +1,5 @@
+# Force a dev-inclusive install so the build tooling (tsx, vite, esbuild,
+# typescript) is present even though NODE_ENV=production is set on the service.
+# Also changes the Nixpacks plan, which invalidates the stale build cache.
+[phases.install]
+cmds = ["npm ci --include=dev"]
