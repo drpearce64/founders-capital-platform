@@ -942,8 +942,11 @@ export default function Dashboard() {
     return filteredInvestments.reduce((s, i) => s + parseFloat(i.cost_basis || 0), 0);
   })();
   const totalFV   = filteredInvestments.reduce((s, i) => s + parseFloat(i.current_fair_value ?? i.cost_basis ?? 0), 0);
-  const unrealised = totalFV - totalCost;
-  const moic = totalCost > 0 ? totalFV / totalCost : 0;
+  // Unrealised gain / MOIC must compare against the SAME positions' cost basis,
+  // not the entity-level final_investment_usd (a different source → phantom gain).
+  const fvCostBasis = filteredInvestments.reduce((s, i) => s + parseFloat(i.cost_basis ?? 0), 0);
+  const unrealised = totalFV - fvCostBasis;
+  const moic = fvCostBasis > 0 ? totalFV / fvCostBasis : 0;
   const activePositions = filteredInvestments.filter(i => i.status === "active").length;
 
   const lpCount  = selectedSeries === "all" ? (data?.lp_count  ?? 0) : filteredCommitments.length;

@@ -828,7 +828,13 @@ export default function YCDashboard() {
     const src = filtered;
     const totalFCDeployed  = src.reduce((s, d) => s + (d.fc_investment ?? 0), 0);
     const totalSPVSize     = src.reduce((s, d) => s + (d.usd_investment_value ?? 0), 0);
-    const totalLiveValue   = src.reduce((s, d) => s + (d.live_market_value_usd ?? d.usd_investment_value ?? 0), 0);
+    const totalLiveValue   = src.reduce((s, d) => {
+      // Use the live mark if present, else the per-deal MOIC × cost (matches the
+      // MOIC shown per row), else cost — so winners feed the blended MOIC.
+      const cost = d.usd_investment_value ?? 0;
+      const live = d.live_market_value_usd ?? (d.moic != null ? d.moic * cost : cost);
+      return s + live;
+    }, 0);
     const portfolioMoic    = totalSPVSize > 0 ? totalLiveValue / totalSPVSize : 1;
     const followonCount    = src.filter(d => d.has_followon).length;
     const followonTotalUSD = src.filter(d => d.has_followon).reduce((s, d) => s + (d.followon_amount_usd ?? 0), 0);

@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { supabase, AUTH_ENABLED } from "./supabaseClient";
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || "https://founders-capital-platform-production.up.railway.app";
 
@@ -17,9 +18,15 @@ export async function apiRequest(
   body?: unknown
 ): Promise<Response> {
   const url = `${API_BASE}${path}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (AUTH_ENABLED) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
   const res = await fetch(url, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
