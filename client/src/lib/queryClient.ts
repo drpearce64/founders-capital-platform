@@ -1,7 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 import { supabase, AUTH_ENABLED } from "./supabaseClient";
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL || "https://founders-capital-platform-production.up.railway.app";
+// Default to SAME-ORIGIN (relative): /api calls go to whoever served the page,
+// so the frontend follows its own deployment instead of a hardcoded host.
+// Set VITE_API_URL (build-time) only if the API lives on a different origin.
+const API_BASE = (import.meta as any).env?.VITE_API_URL || "";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
