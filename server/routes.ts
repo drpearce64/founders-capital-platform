@@ -3422,6 +3422,7 @@ Founders Capital`;
           .select("investor_id, committed_amount, called_amount, funded_amount, currency, status")
           .eq("entity_id", entity.id)
           .neq("status", "cancelled")
+          .is("archived_at", null)
           .order("committed_amount", { ascending: false });
         if (cErr) return res.status(500).json({ error: cErr.message });
         commitments = cmts ?? [];
@@ -3504,6 +3505,7 @@ Founders Capital`;
         .select("investor_id, committed_amount, called_amount, funded_amount, currency, status")
         .eq("entity_id", entityId)
         .neq("status", "cancelled")
+        .is("archived_at", null)
         .order("committed_amount", { ascending: false });
       if (cErr) return res.status(500).json({ error: cErr.message });
 
@@ -3632,7 +3634,8 @@ Founders Capital`;
       const { data: allCommitments, error: cErr } = await supabase
         .from("investor_commitments")
         .select("investor_id,entity_id,committed_amount,called_amount")
-        .eq("status", "active");
+        .eq("status", "active")
+        .is("archived_at", null);
       if (cErr) throw cErr;
 
       // Apply filter
