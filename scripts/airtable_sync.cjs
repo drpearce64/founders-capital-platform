@@ -480,14 +480,31 @@ async function syncCommitments() {
 
   console.log(`  Fetched ${records.length} commitments from Airtable`);
 
-  // ── Phase 1: Build lookup maps (2 queries total instead of 2 per record) ──
-  const [{ data: allInvestors }, { data: allEntities }] = await Promise.all([
-    supabase.from("investors").select("id,airtable_id").not("airtable_id", "is", null),
-    supabase.from("entities").select("id,airtable_deal_id").not("airtable_deal_id", "is", null),
-  ]);
+  // ── Phase 1: Build lookup maps — PAGINATED past PostgREST's 1000-row default
+  //    cap. An unpaginated select returned only the first 1000 investors (of
+  //    2,300+), so commitments for the rest were wrongly marked unresolved_ref.
+  //    .order("id") gives a stable sort so paging can't skip or repeat rows.
+  async function buildIdMap(table, keyCol) {
+    const map = {};
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from(table)
+        .select(`id,${keyCol}`)
+        .not(keyCol, "is", null)
+        .order("id")
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(`buildIdMap(${table}) failed: ${error.message}`);
+      for (const r of data) map[r[keyCol]] = r.id;
+      if (data.length < PAGE) break;
+    }
+    return map;
+  }
 
-  const investorMap = Object.fromEntries((allInvestors || []).map(r => [r.airtable_id, r.id]));
-  const entityMap   = Object.fromEntries((allEntities  || []).map(r => [r.airtable_deal_id, r.id]));
+  const [investorMap, entityMap] = await Promise.all([
+    buildIdMap("investors", "airtable_id"),
+    buildIdMap("entities", "airtable_deal_id"),
+  ]);
 
   console.log(`  Resolved ${Object.keys(investorMap).length} investors, ${Object.keys(entityMap).length} entities from Supabase`);
 
