@@ -50,6 +50,10 @@ const AIRTABLE_API = "https://api.airtable.com/v0";
 // up-front if the key is missing (see env check below).
 const supabase = SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
+// Airtable record-ids seen in THIS run's fetches — used by the archive-missing
+// reconciliation to soft-delete Supabase rows whose source record was deleted.
+const fetchedAirtableIds = { members: new Set(), commitments: new Set() };
+
 // ── Airtable fetch helper ────────────────────────────────────────────────────
 
 async function fetchAirtableTable(tableId, fields = []) {
@@ -202,6 +206,7 @@ async function syncMembers() {
   ]);
 
   console.log(`  Fetched ${records.length} members from Airtable`);
+  for (const r of records) fetchedAirtableIds.members.add(r.id);
 
   // Build rows, skipping rejects / blank records
   const rows = [];
@@ -479,6 +484,7 @@ async function syncCommitments() {
   ]);
 
   console.log(`  Fetched ${records.length} commitments from Airtable`);
+  for (const r of records) fetchedAirtableIds.commitments.add(r.id);
 
   // ── Phase 1: Build lookup maps — PAGINATED past PostgREST's 1000-row default
   //    cap. An unpaginated select returned only the first 1000 investors (of
@@ -989,6 +995,68 @@ async function syncTransactions() {
   console.log(`  \u2713 transactions — upserted: ${stats.transactions.upserted}, skipped: ${stats.transactions.skipped}, errors: ${stats.transactions.errors}`);
 }
 
+// ── Archive-missing reconciliation ───────────────────────────────────────────
+// Soft-deletes (sets archived_at) any live Supabase row in `table` whose
+// airtable_id is NOT in this run's Airtable fetch — i.e. the source record was
+// deleted. Guards:
+//   • only rows that HAVE an airtable_id (never Platform-native, no-airtable_id rows),
+//   • only currently-live rows (archived_at IS NULL),
+//   • skips entirely if the fetch set is empty (avoids mass soft-delete on a bad fetch).
+// Gated by SYNC_ARCHIVE_MISSING:  unset → skip · "dry" → count + log only · "true" → archive.
+async function reconcileArchiveMissing(table, fetchedIds, label) {
+  const mode = process.env.SYNC_ARCHIVE_MISSING;
+  if (mode !== "dry" && mode !== "true") return;
+
+  if (!fetchedIds || fetchedIds.size === 0) {
+    console.warn(`  \u26A0 ${label}: Airtable fetch set empty — skipping to avoid mass soft-delete.`);
+    return;
+  }
+
+  // Page through all live rows that carry an airtable_id (past the 1000-row cap).
+  const rows = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("id,airtable_id")
+      .not("airtable_id", "is", null)
+      .is("archived_at", null)
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`reconcileArchiveMissing(${table}) select failed: ${error.message}`);
+    rows.push(...data);
+    if (data.length < PAGE) break;
+  }
+
+  const stale = rows.filter(r => !fetchedIds.has(r.airtable_id));
+
+  // Always log the count BEFORE acting.
+  console.log(`  ${label}: ${stale.length} live row(s) with an airtable_id NOT in this run's fetch ` +
+    `(of ${rows.length} live-with-id; ${fetchedIds.size} fetched) — would archive.`);
+  await logSync(table, null, "archive_missing", mode === "true" ? "ok" : "dry", JSON.stringify({
+    would_archive: stale.length, live_with_id: rows.length, fetched: fetchedIds.size,
+    sample: stale.slice(0, 10).map(r => r.airtable_id),
+  }));
+
+  if (mode !== "true") {
+    console.log(`  ${label}: DRY RUN (SYNC_ARCHIVE_MISSING="dry") — nothing archived.`);
+    return;
+  }
+
+  let archived = 0;
+  for (let i = 0; i < stale.length; i += 200) {
+    const ids = stale.slice(i, i + 200).map(r => r.id);
+    const { error } = await supabase
+      .from(table)
+      .update({ archived_at: new Date().toISOString() })
+      .in("id", ids);
+    if (error) throw new Error(`reconcileArchiveMissing(${table}) update failed: ${error.message}`);
+    archived += ids.length;
+  }
+  console.log(`  \u2713 ${label}: archived ${archived} stale row(s).`);
+  await logSync(table, null, "archive_missing", "ok", `archived:${archived}`);
+}
+
 async function main() {
   console.log("═══════════════════════════════════════════════════");
   console.log("  Founders Capital — Airtable → Supabase Sync");
@@ -1023,6 +1091,10 @@ async function main() {
 
   // ── Phase 6: Transactions → bank_transactions ──────────────────────────────
   await syncTransactions();
+
+  // Archive rows whose Airtable source record was deleted (flag-gated; default off).
+  await reconcileArchiveMissing("investor_commitments", fetchedAirtableIds.commitments, "commitments archive-missing");
+  await reconcileArchiveMissing("investors", fetchedAirtableIds.members, "investors archive-missing");
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
