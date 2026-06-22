@@ -22,7 +22,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const url = `${API_BASE}${path}`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (AUTH_ENABLED) {
+  if (AUTH_ENABLED && supabase) {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     if (token) headers["Authorization"] = `Bearer ${token}`;

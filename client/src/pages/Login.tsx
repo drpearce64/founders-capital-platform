@@ -11,6 +11,7 @@ export default function Login() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true); setError(null);
+    if (!supabase) { setError("Auth is not configured."); setBusy(false); return; }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setError(error.message);
     setBusy(false);

@@ -4,12 +4,14 @@ import { supabase, AUTH_ENABLED } from "@/lib/supabaseClient";
 import Login from "@/pages/Login";
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
-  if (!AUTH_ENABLED) return <>{children}</>;
+  // Auth dark or not configured → render the app directly; never touch supabase.
+  if (!AUTH_ENABLED || !supabase) return <>{children}</>;
+  const sb = supabase; // narrowed to non-null
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => { setAuthed(!!data.session); setReady(true); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setAuthed(!!session));
+    sb.auth.getSession().then(({ data }) => { setAuthed(!!data.session); setReady(true); });
+    const { data: sub } = sb.auth.onAuthStateChange((_e, session) => setAuthed(!!session));
     return () => sub.subscription.unsubscribe();
   }, []);
   if (!ready) return null;
