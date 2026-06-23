@@ -307,7 +307,9 @@ async function claimVectorShortCode(code, dealAirtableId, fetchedDealIds) {
 
   // Empty ghost: archive AND rename its short_code so the canonical code is truly free
   // (robust whether the unique index is partial on archived_at or not).
-  const freed = `${code}-GHOST-${String(holder.airtable_deal_id).slice(-4).toUpperCase()}`;
+  // Prefix with GHOST- (not FC-VECTOR-) so a freed ghost can never re-enter the
+  // dashboard's `short_code LIKE 'FC-VECTOR-%'` Vector view.
+  const freed = `GHOST-${code}-${String(holder.airtable_deal_id).slice(-4).toUpperCase()}`;
   const { error: aErr } = await supabase
     .from("entities")
     .update({

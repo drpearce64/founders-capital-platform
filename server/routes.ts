@@ -563,7 +563,8 @@ Founders Capital`;
     const vectorEntitiesRes = await supabase
       .from("entities")
       .select("id")
-      .like("short_code", "FC-VECTOR-%");
+      .like("short_code", "FC-VECTOR-%")
+      .is("archived_at", null);
     const vectorIds = (vectorEntitiesRes.data || []).map((e: any) => e.id);
 
     const [entitiesRes, commitmentsRes, investmentsRes, callsRes] = await Promise.all([
