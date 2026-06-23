@@ -267,6 +267,60 @@ async function syncMembers() {
 // STEP 2 — Sync Deals → entities (SPV) + investments
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Resolve whether a deal may claim a canonical Vector short_code (FC-VECTOR-N),
+// handling uniqueness safely:
+//   • free / already-ours      → { ok: true }
+//   • held by another LIVE deal → { ok: false }  (vehicle has >1 deal — flag, don't collide)
+//   • held by a GHOST entity (its Airtable deal was deleted):
+//       – ghost has live commitments → { ok: false }  (don't strand the LP — needs Airtable fix first)
+//       – ghost is empty             → archive + rename the ghost, then { ok: true }
+async function claimVectorShortCode(code, dealAirtableId, fetchedDealIds) {
+  const { data: holder, error } = await supabase
+    .from("entities")
+    .select("id, airtable_deal_id, archived_at")
+    .eq("short_code", code)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (error) return { ok: false, reason: `lookup failed: ${error.message}` };
+  if (!holder) return { ok: true };                                  // code is free
+  if (holder.airtable_deal_id === dealAirtableId) return { ok: true }; // already ours
+
+  if (fetchedDealIds.has(holder.airtable_deal_id)) {
+    // A different LIVE deal already owns this Vector code → genuine >1-deal-per-vehicle.
+    return { ok: false, reason: `${code} already held by live deal ${holder.airtable_deal_id} (vehicle has >1 deal — needs manual resolution)` };
+  }
+
+  // Holder's source deal is gone from Airtable → it's a ghost. Free it only if empty.
+  const { data: liveCommits, error: cErr } = await supabase
+    .from("investor_commitments")
+    .select("airtable_id")
+    .eq("entity_id", holder.id)
+    .is("archived_at", null);
+  if (cErr) return { ok: false, reason: `commitment check failed: ${cErr.message}` };
+  if (liveCommits && liveCommits.length > 0) {
+    const list = liveCommits.map((c) => c.airtable_id).join(", ");
+    return {
+      ok: false,
+      reason: `${code} held by GHOST entity ${holder.id} (deal ${holder.airtable_deal_id} deleted) with ${liveCommits.length} live commitment(s) [${list}] — re-link them to a live deal in Airtable first; not archiving (would strand an LP)`,
+    };
+  }
+
+  // Empty ghost: archive AND rename its short_code so the canonical code is truly free
+  // (robust whether the unique index is partial on archived_at or not).
+  const freed = `${code}-GHOST-${String(holder.airtable_deal_id).slice(-4).toUpperCase()}`;
+  const { error: aErr } = await supabase
+    .from("entities")
+    .update({
+      archived_at: new Date().toISOString(),
+      short_code: freed,
+      notes: `Auto-archived: Airtable deal ${holder.airtable_deal_id} deleted; ${code} reassigned to live deal ${dealAirtableId}`,
+    })
+    .eq("id", holder.id);
+  if (aErr) return { ok: false, reason: `failed to free ghost ${holder.id}: ${aErr.message}` };
+  console.log(`  ⟳ Archived empty ghost entity ${holder.id} (deleted deal ${holder.airtable_deal_id}) → freed ${code}`);
+  return { ok: true };
+}
+
 async function syncDeals() {
   console.log("\n[2/3] Syncing Deals → entities + investments…");
 
@@ -288,6 +342,7 @@ async function syncDeals() {
     "URL",
     "Quarter closed",
     "Platform",
+    "Vehicle Name Abbrv",
     "Cap",
     "Finalised Allocation - US SPVs Rollup (from Commitments)",
     "USD Fees Generated",
@@ -298,6 +353,10 @@ async function syncDeals() {
   ]);
 
   console.log(`  Fetched ${records.length} deals from Airtable`);
+
+  // Set of Airtable deal ids present in THIS fetch — used to detect "ghost"
+  // entities whose source deal has been deleted from Airtable.
+  const fetchedDealIds = new Set(records.map((r) => r.id));
 
   for (const rec of records) {
     const f = rec.fields;
@@ -317,16 +376,39 @@ async function syncDeals() {
       continue;
     }
 
-    // Derive a short_code: "VEC-IV" style isn't known from Deals table,
-    // so we use the deal code prefix (e.g. REV-1124-FC → REV) or company initials
-    const short_code = deal_code
+    // Derive a short_code: deal code prefix (e.g. REV-1124-FC → REV) or company initials.
+    let short_code = deal_code
       ? deal_code.split("-")[0].toUpperCase().slice(0, 10)
       : company_name.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase();
+    let entity_name = `FC ${company_name} SPV`;
+
+    // ── Vector-series canonical mapping ────────────────────────────────────
+    // If the Airtable "Vehicle Name Abbrv" is a Vector series (e.g. "Vector IX"),
+    // the canonical entity is short_code FC-VECTOR-{N} / name
+    // "FC Platform LP Vector {N} Series", derived from the vehicle field — not the
+    // deal code. This overrides the auto code AND existing rows (see update branch),
+    // so e.g. Project Prometheus II → FC-VECTOR-I and Replit → FC-VECTOR-IX, and any
+    // future Vector deal self-maps. Uniqueness is resolved by claimVectorShortCode.
+    const vehicleAbbrv = f["Vehicle Name Abbrv"] ? String(f["Vehicle Name Abbrv"]).trim() : null;
+    const vecMatch = vehicleAbbrv && vehicleAbbrv.match(/^Vector\s+([IVXLC]+)$/i);
+    let isVectorSeries = false;
+    if (vecMatch) {
+      const roman = vecMatch[1].toUpperCase();
+      const canonicalCode = `FC-VECTOR-${roman}`;
+      const claim = await claimVectorShortCode(canonicalCode, airtable_id, fetchedDealIds);
+      if (claim.ok) {
+        short_code = canonicalCode;
+        entity_name = `FC Platform LP Vector ${roman} Series`;
+        isVectorSeries = true;
+      } else {
+        console.warn(`  ⚠ Vector mapping deferred for "${company_name}" (${airtable_id}): ${claim.reason}. Keeping short_code "${short_code}".`);
+      }
+    }
 
     // ── Upsert entity (SPV wrapper for this deal) ──────────────────────────
     const entity_row = {
       airtable_deal_id:  airtable_id,
-      name:              `FC ${company_name} SPV`,
+      name:              entity_name,
       short_code,
       entity_type:       "series_spv",
       jurisdiction:      "Delaware",
@@ -373,6 +455,14 @@ async function syncDeals() {
           management_fee_rate:         entity_row.management_fee_rate,
           notes:                       entity_row.notes,
         };
+        // Exception to the "never overwrite name/short_code" rule: Vector-series deals
+        // get their canonical FC-VECTOR-{N} short_code + name enforced on existing rows
+        // too (e.g. relabel Project Prometheus II's entity from PMS → FC-VECTOR-I).
+        // Only applied when claimVectorShortCode confirmed the code is free.
+        if (isVectorSeries) {
+          financial_update.short_code = short_code;
+          financial_update.name       = entity_name;
+        }
         const { error } = await supabase
           .from("entities")
           .update(financial_update)
