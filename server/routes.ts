@@ -1159,7 +1159,7 @@ Founders Capital`;
       const pdfBuffer = fs.readFileSync(pdfPath);
       const safeName = investor.full_name.replace(/[^a-z0-9]/gi, "_");
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="FC_Statement_${safeName}_${period.replace(/\s/g,"_")}.pdf"`);
+      res.setHeader("Content-Disposition", `attachment; filename="FC_Statement_${safeName}_${String(period).replace(/\s/g,"_")}.pdf"`);
       res.send(pdfBuffer);
 
       // Log to audit + save reference to documents table
@@ -2524,7 +2524,7 @@ Founders Capital`;
         let amountHint: number | null = null;
         let invoiceDateHint: string | null = null;
         try {
-          const pdfParse = (await import("pdf-parse")).default;
+          const pdfParse = ((await import("pdf-parse")) as any).default;
           const pdfData = await pdfParse(fileBuffer);
           const text = pdfData.text || "";
 
@@ -2721,7 +2721,7 @@ Founders Capital`;
         let dateHint: string | null = null;
         let vendorHint = meta.vendor || "";
         try {
-          const pdfParse = (await import("pdf-parse")).default;
+          const pdfParse = ((await import("pdf-parse")) as any).default;
           const text = (await pdfParse(fileBuffer)).text || "";
           const amounts = [...text.matchAll(/[$£€]?\s?([\d,]+\.\d{2})/g)]
             .map((m: RegExpMatchArray) => parseFloat(m[1].replace(/,/g, "")))

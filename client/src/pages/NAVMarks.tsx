@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   TrendingUp, AlertTriangle, ChevronDown, ChevronRight,
-  DollarSign, BarChart3, Clock, CheckCircle2, ExternalLink,
+  DollarSign, BarChart3, Clock, CheckCircle2, ExternalLink, Plus,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
@@ -124,6 +124,7 @@ export default function NAVMarks() {
   const qc = useQueryClient();
   const [selectedSpv, setSelectedSpv] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"portfolio" | "marks" | "nav-per-lp">("portfolio");
+  const [showForm, setShowForm] = useState(false);
 
   // Portfolio data (new endpoint)
   const { data: portfolio, isLoading: portLoading } = useQuery<any>({
