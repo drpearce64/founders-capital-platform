@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FolderOpen, Upload, Download, Eye, Trash2, Plus, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { supabase, AUTH_ENABLED } from "@/lib/supabaseClient";
 
 const DOC_TYPES = [
   "stock_purchase_agreement", "operating_agreement", "side_letter", "subscription_doc",
@@ -83,8 +84,19 @@ export default function Documents() {
         if (v !== undefined && v !== "") fd.append(k, v as any);
       });
       if (file) fd.append("file", file);
+      // Attach the Supabase access token when auth is on (mirrors apiRequest).
+      // Multipart upload can't go through the JSON-only apiRequest helper, so the
+      // header is added here. Don't set Content-Type — the browser sets the
+      // multipart boundary itself.
+      const headers: Record<string, string> = {};
+      if (AUTH_ENABLED && supabase) {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+      }
       const res = await fetch("/api/documents/upload", {
         method: "POST",
+        headers,
         body: fd,
       });
       if (!res.ok) throw new Error(await res.text());
