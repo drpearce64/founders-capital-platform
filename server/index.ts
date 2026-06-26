@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./env"; // boot-time env validation — must run before routes/supabase import
 import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
 import cors from "cors";

@@ -1,5 +1,13 @@
 import "./index.css";
 import App from "./App";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { checkClientEnv } from "./lib/env";
 import { createRoot } from "react-dom/client";
 
-createRoot(document.getElementById("root")!).render(<App />);
+checkClientEnv();
+
+createRoot(document.getElementById("root")!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+);
