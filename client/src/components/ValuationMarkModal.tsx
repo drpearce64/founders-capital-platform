@@ -47,6 +47,9 @@ interface Investment {
   fair_value_date?: string | null;
   valuation_basis?: string | null;
   entities?: { short_code?: string; name?: string };
+  // Synthetic UI-only flag set by callers for portfolio rows with no investment
+  // record yet (not persisted).
+  _noInvestmentRecord?: boolean;
 }
 
 interface ValuationMark {
