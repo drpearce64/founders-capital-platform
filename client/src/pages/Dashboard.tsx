@@ -1428,7 +1428,7 @@ export default function Dashboard() {
             {[
               { label: "General Partner",  value: "Founders Capital Platform GP, LP",   note: "Delaware Limited Partnership · FC-PLATFORM-GP" },
               { label: "Master Entity",    value: "Founders Capital Platform LP",        note: "Delaware Series LLC · Filed 11 July 2025 · FC-PLATFORM-LP" },
-              { label: "Series SPVs",      value: "Vector I – V (Protected Series)",     note: "Segregated cells under §17-218(b) DRULPA · ring-fenced assets" },
+              { label: "Series SPVs",      value: "Vector I – V, IX (Protected Series)", note: "Segregated cells under §17-218(b) DRULPA · ring-fenced assets" },
               { label: "US Holdco",        value: "Founders Capital US Holdings LLC",    note: "FC-US-HOLDING · 100% owned by FC Group Holding Ltd (UK)" },
               { label: "AIFM",            value: "Paxiot Limited (UK)",                 note: "FCA Authorised · Co. No. 07455644 · Management delegation" },
               { label: "Registered Agent", value: "Resident Agents Inc.",                note: "8 The Green STE R, Dover, Delaware 19901" },
