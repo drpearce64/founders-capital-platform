@@ -305,6 +305,25 @@ export default function CaymanDashboard() {
         </p>
       </div>
 
+      {/* Empty-state — the Cayman fund has no portfolio/LP data connected yet */}
+      {!loading && (investments as any[]).length === 0 && totalCommitted === 0 && (
+        <div
+          className="rounded-xl border p-5 mb-6 flex items-start gap-3"
+          style={{ background: "hsl(196 80% 46% / 0.06)", borderColor: "hsl(196 80% 46% / 0.3)" }}
+          data-testid="cayman-empty-state"
+        >
+          <AlertCircle size={18} style={{ color: "hsl(196 80% 46%)", flexShrink: 0, marginTop: 2 }} />
+          <div className="text-sm">
+            <div className="font-medium mb-0.5" style={{ color: "hsl(var(--foreground))" }}>No portfolio data yet</div>
+            <p style={{ color: "hsl(var(--muted-foreground))" }}>
+              The Cayman fund (Founders Capital Strat. Opps. Fund I LP) has no investments or LP
+              commitments connected yet. The figures below will populate once the fund's portfolio
+              and subscriptions are added to the data source.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Row 1: Fund-level KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <KPICard
