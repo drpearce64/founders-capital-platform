@@ -40,4 +40,34 @@ t("no rate → flagged USD fallback (never silently wrong)", () => {
   const r = convertToUsd(100, "GBP", null);
   assert.strictEqual(r.basis, "no_rate_fallback_usd");
 });
+
+// ── Extended coverage (additive) ────────────────────────────────────────────
+t("KYD peg: fixed 1.20 rate + peg basis", () => {
+  const r = convertToUsd(1000, "KYD", null);
+  assert.strictEqual(r.rate, 1.20);
+  assert.strictEqual(r.basis, "peg");
+  close(r.usd, 1200);
+});
+t("EUR derivation: eurUsd = 1 / USD-EUR per row", () => {
+  close(table[0].eurUsd, 1 / 0.9697);
+  close(table[2].eurUsd, 1 / 0.8543);
+});
+t("EUR with missing USD-EUR rate → flagged fallback (not silently wrong)", () => {
+  const r = convertToUsd(500, "EUR", { date: "2025-01-01", gbpUsd: 1.25, eurUsd: null });
+  assert.strictEqual(r.basis, "unknown_currency_fallback_usd");
+});
+t("unknown currency → flagged USD fallback", () => {
+  const r = convertToUsd(777, "JPY", rateForDate(table, "2025-06-04"));
+  assert.strictEqual(r.usd, 777);
+  assert.strictEqual(r.basis, "unknown_currency_fallback_usd");
+});
+t("buildRateTable skips rows missing date or GBP-USD; null eurUsd when no USD-EUR", () => {
+  const tbl = buildRateTable([
+    { fields: { "Date": "2025-02-02", "GBP-USD": 1.3 } },
+    { fields: { "GBP-USD": 1.4 } },           // no date → skipped
+    { fields: { "Date": "2025-03-03" } },     // no GBP-USD → skipped
+  ]);
+  assert.strictEqual(tbl.length, 1);
+  assert.strictEqual(tbl[0].eurUsd, null);
+});
 console.log(`\n${pass} tests passed.`);
