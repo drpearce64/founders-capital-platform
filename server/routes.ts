@@ -33,21 +33,24 @@ async function audit(
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
   // ── Connectivity diagnostic ──────────────────────────────────────────────
-  app.get("/api/ping", async (_req, res) => {
+  // Fast healthcheck — returns immediately with no I/O so Railway's healthcheck
+  // (healthcheckPath: "/api/ping", healthcheckTimeout: 100s) never times out.
+  app.get("/api/ping", (_req, res) => {
+    res.json({ status: "ok", node: process.version, ts: Date.now() });
+  });
+
+  // Deep connectivity diagnostic (async Supabase fetch) — call manually, not used by Railway.
+  app.get("/api/ping/deep", async (_req, res) => {
     const results: Record<string, any> = {
       node: process.version,
       env_supabase_url: process.env.SUPABASE_URL ? "set" : "missing",
       env_service_role_key: process.env.SUPABASE_SERVICE_ROLE_KEY ? "set" : "missing",
     };
-    // Test raw HTTPS fetch to Supabase (uses the service-role key the server runs on)
     try {
       const supaUrl = process.env.SUPABASE_URL || "https://yoyrwrdzivygufbzckdv.supabase.co";
       const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
       const r = await fetch(`${supaUrl}/rest/v1/entities?limit=1`, {
-        headers: {
-          apikey: supaKey,
-          Authorization: `Bearer ${supaKey}`,
-        },
+        headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}` },
         signal: AbortSignal.timeout(10000),
       });
       results.supabase_fetch_status = r.status;
