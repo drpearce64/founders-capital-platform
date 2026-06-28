@@ -6,7 +6,7 @@ import fs from "fs";
 import { execFile, fork } from "child_process";
 import { promisify } from "util";
 import os from "os";
-import supabase from "./supabase";
+import supabase, { selectAllRows } from "./supabase";
 import { runIntegrityCheck } from "./integrity/integrity_runner";
 
 const execFileAsync = promisify(execFile);
@@ -86,12 +86,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── Investors ──────────────────────────────────────────────────────────────
 
   app.get("/api/investors", async (_req, res) => {
-    const { data, error } = await supabase
+    // Paginated: the investors table exceeds PostgREST's 1000-row cap.
+    const data = await selectAllRows(() => supabase
       .from("investors")
       .select("*")
       .is("archived_at", null)
-      .order("full_name");
-    if (error) return res.status(500).json({ error: error.message });
+      .order("full_name")
+      .order("id"));
     res.json(data);
   });
 
@@ -110,15 +111,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/commitments", async (req, res) => {
     const { entity_id } = req.query;
-    let query = supabase
-      .from("investor_commitments")
-      .select("*, investors(full_name, email, investor_type), entities(name, short_code, entity_type)")
-      .is("archived_at", null);
-
-    if (entity_id) query = query.eq("entity_id", entity_id as string);
-
-    const { data, error } = await query.order("committed_amount", { ascending: false });
-    if (error) return res.status(500).json({ error: error.message });
+    // Paginated: active commitments exceed the 1000-row cap when unfiltered.
+    const data = await selectAllRows(() => {
+      let query = supabase
+        .from("investor_commitments")
+        .select("*, investors(full_name, email, investor_type), entities(name, short_code, entity_type)")
+        .is("archived_at", null);
+      if (entity_id) query = query.eq("entity_id", entity_id as string);
+      return query.order("committed_amount", { ascending: false }).order("id");
+    });
     res.json(data);
   });
 
@@ -138,11 +139,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Returns investor count per entity_id: { [entity_id]: count }
   app.get("/api/investor-counts", async (_req, res) => {
-    const { data, error } = await supabase
+    // Paginated: counting every active commitment (>1000) per entity.
+    const data = await selectAllRows(() => supabase
       .from("investor_commitments")
       .select("entity_id")
-      .is("archived_at", null);
-    if (error) return res.status(500).json({ error: error.message });
+      .is("archived_at", null)
+      .order("id"));
     const counts: Record<string, number> = {};
     for (const row of data || []) {
       if (row.entity_id) counts[row.entity_id] = (counts[row.entity_id] || 0) + 1;
@@ -689,13 +691,15 @@ Founders Capital`;
 
   app.get("/api/nav-marks", async (req, res) => {
     const { entity_id } = req.query;
-    let query = supabase
-      .from("nav_marks")
-      .select("*, entities(name, short_code, investments(company_name))")
-      .order("mark_date", { ascending: false });
-    if (entity_id) query = query.eq("entity_id", entity_id as string);
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    // Paginated: nav_marks grows per recorded mark.
+    const data = await selectAllRows(() => {
+      let query = supabase
+        .from("nav_marks")
+        .select("*, entities(name, short_code, investments(company_name))")
+        .order("mark_date", { ascending: false });
+      if (entity_id) query = query.eq("entity_id", entity_id as string);
+      return query.order("id");
+    });
     res.json(data);
   });
 
@@ -761,15 +765,17 @@ Founders Capital`;
 
   app.get("/api/documents", async (req, res) => {
     const { entity_id, investor_id, document_type } = req.query;
-    let query = supabase
-      .from("documents")
-      .select("*, entities(name, short_code, investments(company_name)), investors(full_name)")
-      .order("created_at", { ascending: false });
-    if (entity_id) query = query.eq("entity_id", entity_id as string);
-    if (investor_id) query = query.eq("investor_id", investor_id as string);
-    if (document_type) query = query.eq("document_type", document_type as string);
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    // Paginated: documents grows per upload and can pass the 1000-row cap.
+    const data = await selectAllRows(() => {
+      let query = supabase
+        .from("documents")
+        .select("*, entities(name, short_code, investments(company_name)), investors(full_name)")
+        .order("created_at", { ascending: false });
+      if (entity_id) query = query.eq("entity_id", entity_id as string);
+      if (investor_id) query = query.eq("investor_id", investor_id as string);
+      if (document_type) query = query.eq("document_type", document_type as string);
+      return query.order("id");
+    });
     res.json(data);
   });
 
@@ -882,14 +888,16 @@ Founders Capital`;
 
   app.get("/api/distribution-notices", async (req, res) => {
     const { distribution_id, investor_id } = req.query;
-    let query = supabase
-      .from("distribution_notices")
-      .select("*, investors(full_name, email), entities(name, short_code)")
-      .order("created_at", { ascending: false });
-    if (distribution_id) query = query.eq("distribution_id", distribution_id as string);
-    if (investor_id) query = query.eq("investor_id", investor_id as string);
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    // Paginated: distribution_notices grows per notice issued.
+    const data = await selectAllRows(() => {
+      let query = supabase
+        .from("distribution_notices")
+        .select("*, investors(full_name, email), entities(name, short_code)")
+        .order("created_at", { ascending: false });
+      if (distribution_id) query = query.eq("distribution_id", distribution_id as string);
+      if (investor_id) query = query.eq("investor_id", investor_id as string);
+      return query.order("id");
+    });
     res.json(data);
   });
 
@@ -2080,23 +2088,29 @@ Founders Capital`;
 
   // GET all entries — filterable by entity_id, investor_id, tax_year
   app.get("/api/capital-accounts", async (req, res) => {
-    let query = supabase
-      .from("lp_capital_account_entries")
-      .select(`
-        *,
-        investors(full_name, email),
-        entities(name, short_code)
-      `)
-      .order("entry_date", { ascending: false });
+    const base = () => {
+      let q = supabase
+        .from("lp_capital_account_entries")
+        .select(`
+          *,
+          investors(full_name, email),
+          entities(name, short_code)
+        `)
+        .order("entry_date", { ascending: false });
+      if (req.query.entity_id)   q = q.eq("entity_id",  req.query.entity_id as string);
+      if (req.query.investor_id) q = q.eq("investor_id", req.query.investor_id as string);
+      if (req.query.tax_year)    q = q.eq("tax_year",    parseInt(req.query.tax_year as string));
+      if (req.query.entry_type)  q = q.eq("entry_type",  req.query.entry_type as string);
+      return q.order("id");
+    };
 
-    if (req.query.entity_id)   query = query.eq("entity_id",  req.query.entity_id as string);
-    if (req.query.investor_id) query = query.eq("investor_id", req.query.investor_id as string);
-    if (req.query.tax_year)    query = query.eq("tax_year",    parseInt(req.query.tax_year as string));
-    if (req.query.entry_type)  query = query.eq("entry_type",  req.query.entry_type as string);
-    if (req.query.limit)       query = query.limit(parseInt(req.query.limit as string));
-
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    // Explicit ?limit= → single bounded query; otherwise paginate past the 1000-row cap.
+    if (req.query.limit) {
+      const { data, error } = await base().limit(parseInt(req.query.limit as string));
+      if (error) return res.status(500).json({ error: error.message });
+      return res.json(data);
+    }
+    const data = await selectAllRows(base);
     res.json(data);
   });
 
@@ -2230,12 +2244,12 @@ Founders Capital`;
       }
 
       // ── 2. GAIN ALLOCATIONS from nav_marks ───────────────────────────────────
-      const { data: navMarks, error: navErr } = await supabase
+      // Paginated: nav_marks grows per recorded mark.
+      const navMarks = await selectAllRows(() => supabase
         .from("nav_marks")
         .select("*")
-        .order("mark_date", { ascending: true });
-
-      if (navErr) throw new Error(`nav_marks: ${navErr.message}`);
+        .order("mark_date", { ascending: true })
+        .order("id"));
 
       for (const mark of (navMarks || [])) {
         if (!mark.fair_value || !mark.cost_basis) continue;
@@ -2402,20 +2416,20 @@ Founders Capital`;
 
   // GET /api/invoices — list all invoices with optional filters
   app.get("/api/invoices", async (req, res) => {
-    let query = supabase
-      .from("invoices")
-      .select("*")
-      .order("invoice_date", { ascending: false });
-
-    if (req.query.status && req.query.status !== "all") {
-      query = query.eq("status", req.query.status as string);
-    }
-    if (req.query.series_tag && req.query.series_tag !== "all") {
-      query = query.eq("series_tag", req.query.series_tag as string);
-    }
-
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    // Paginated: invoices grows per invoice.
+    const data = await selectAllRows(() => {
+      let query = supabase
+        .from("invoices")
+        .select("*")
+        .order("invoice_date", { ascending: false });
+      if (req.query.status && req.query.status !== "all") {
+        query = query.eq("status", req.query.status as string);
+      }
+      if (req.query.series_tag && req.query.series_tag !== "all") {
+        query = query.eq("series_tag", req.query.series_tag as string);
+      }
+      return query.order("id");
+    });
     res.json(data);
   });
 
@@ -2634,15 +2648,15 @@ Founders Capital`;
 
   // GET /api/entity-costs — list all entity costs, optional ?entity_id= filter
   app.get("/api/entity-costs", async (req, res) => {
-    let query = supabase
-      .from("entity_costs")
-      .select("*")
-      .order("cost_date", { ascending: false });
-    if (req.query.entity_id) {
-      query = query.eq("entity_id", req.query.entity_id as string);
-    }
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    // Paginated: entity_costs grows per recorded cost.
+    const data = await selectAllRows(() => {
+      let q = supabase
+        .from("entity_costs")
+        .select("*")
+        .order("cost_date", { ascending: false });
+      if (req.query.entity_id) q = q.eq("entity_id", req.query.entity_id as string);
+      return q.order("id");
+    });
     res.json(data);
   });
 
@@ -2816,8 +2830,8 @@ Founders Capital`;
   // GET /api/investor-register — unified view across Delaware LPs + YC investors
   app.get("/api/investor-register", async (_req, res) => {
     try {
-      // YC investors with their holdings
-      const { data: ycInvestors, error: ycErr } = await supabase
+      // YC investors with their holdings — paginated (grows per YC member).
+      const ycInvestors = await selectAllRows(() => supabase
         .from("yc_investors")
         .select(`
           id, airtable_id, name, email, location, kyc_status,
@@ -2825,11 +2839,11 @@ Founders Capital`;
           capital_deployed, member_id, yc_deal_count, delaware_deal_count,
           yc_holdings ( deal_name, yc_batch, closing_date, vehicle, investment_amount_usd, moic, currency )
         `)
-        .order("name");
-      if (ycErr) return res.status(500).json({ error: ycErr.message });
+        .order("name")
+        .order("id"));
 
-      // Delaware investors with their commitments
-      const { data: delawareInvestors, error: delErr } = await supabase
+      // Delaware investors with their commitments — paginated (investors > 1000).
+      const delawareInvestors = await selectAllRows(() => supabase
         .from("investors")
         .select(`
           id, full_name, email, country_of_residence, kyc_status,
@@ -2839,8 +2853,8 @@ Founders Capital`;
           )
         `)
         .is("archived_at", null)
-        .order("full_name");
-      if (delErr) return res.status(500).json({ error: delErr.message });
+        .order("full_name")
+        .order("id"));
 
       // Shape Delaware investors to match register format
       const delawareShaped = (delawareInvestors ?? []).map((inv: any) => ({
@@ -3631,13 +3645,13 @@ Founders Capital`;
         }
       }
 
-      // Fetch all active commitments with entity_id for filtering
-      const { data: allCommitments, error: cErr } = await supabase
+      // Fetch all active commitments with entity_id for filtering — paginated (>1000).
+      const allCommitments = await selectAllRows(() => supabase
         .from("investor_commitments")
         .select("investor_id,entity_id,committed_amount,called_amount")
         .eq("status", "active")
-        .is("archived_at", null);
-      if (cErr) throw cErr;
+        .is("archived_at", null)
+        .order("id"));
 
       // Apply filter
       const commitments = (allCommitments ?? []).filter(c => {
