@@ -9,14 +9,16 @@
 import type { Request, Response, NextFunction } from "express";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL as string;
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://yoyrwrdzivygufbzckdv.supabase.co";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "placeholder-anon-key-not-set";
+const SUPABASE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "placeholder-role-key-not-set";
+
 // JWT verification needs only the anon key; role lookup should use the service
 // role key (to read user_roles once RLS is enabled). Falls back to anon until then.
-const authClient = createClient(SUPABASE_URL, process.env.SUPABASE_ANON_KEY as string);
-const roleDb = createClient(
-  SUPABASE_URL,
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY) as string,
-);
+// Safe fallbacks prevent a crash on startup when env vars are missing (AUTH_ENABLED
+// is off by default so these clients are never actually called).
+const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const roleDb = createClient(SUPABASE_URL, SUPABASE_ROLE_KEY);
 
 const PUBLIC_PATHS = ["/ping"]; // reachable without auth
 
