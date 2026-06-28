@@ -58,3 +58,20 @@ t("called + fee reconciles to funded when over-funded", () => {
   const C=100000, R=106000;
   assert.strictEqual(cappedCalled(C,R) + feeAmount(C,R), R);
 });
+
+// ── Extended coverage (additive) ────────────────────────────────────────────
+t("cappedCalled: large over-call still capped at commitment", () => {
+  assert.strictEqual(cappedCalled(10000, 999999), 10000);
+});
+t("cappedCalled: zero commitment stays 0 (no negative remaining)", () => {
+  assert.strictEqual(cappedCalled(0, 5000), 0);
+});
+t("feeAmount: fractional over-funding", () => {
+  assert.ok(Math.abs(feeAmount(1000.50, 1100.75) - 100.25) < 0.001);
+});
+t("called + fee reconciles across funded/under/exact cases", () => {
+  for (const [C, R] of [[100000,106000],[50000,30000],[25000,25000]]) {
+    assert.strictEqual(cappedCalled(C, R) + feeAmount(C, R), R);
+  }
+});
+console.log(`\n${pass} tests passed (sync_logic, incl. extended).`);

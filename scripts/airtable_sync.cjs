@@ -274,6 +274,49 @@ async function syncMembers() {
 //   • held by a GHOST entity (its Airtable deal was deleted):
 //       – ghost has live commitments → { ok: false }  (don't strand the LP — needs Airtable fix first)
 //       – ghost is empty             → archive + rename the ghost, then { ok: true }
+// ── Pure helpers (exported for unit tests) ──────────────────────────────────
+
+// Map an Airtable "Vehicle Name Abbrv" to the canonical Vector entity identity.
+// "Vector IX" → { shortCode:"FC-VECTOR-IX", name:"FC Platform LP Vector IX Series" }.
+// Returns null when the vehicle is not a Vector series.
+function vectorSeriesFromVehicle(vehicleAbbrv) {
+  if (!vehicleAbbrv) return null;
+  const m = String(vehicleAbbrv).trim().match(/^Vector\s+([IVXLC]+)$/i);
+  if (!m) return null;
+  const roman = m[1].toUpperCase();
+  return { roman, shortCode: `FC-VECTOR-${roman}`, name: `FC Platform LP Vector ${roman} Series` };
+}
+
+// Pure decision for claiming a canonical Vector short_code, given the current
+// holder (or null) and the set of deal ids in this Airtable fetch. Does NOT touch
+// the DB. Returns { ok } / { ok:false, reason } / { needsGhostCheck:true }.
+function classifyVectorClaim({ code, holder, dealAirtableId, fetchedDealIds }) {
+  if (!holder) return { ok: true };                                   // code is free
+  if (holder.airtable_deal_id === dealAirtableId) return { ok: true }; // already ours
+  if (fetchedDealIds.has(holder.airtable_deal_id)) {
+    return { ok: false, reason: `${code} already held by live deal ${holder.airtable_deal_id} (vehicle has >1 deal — needs manual resolution)` };
+  }
+  return { needsGhostCheck: true }; // holder's deal is gone → ghost; caller checks live commitments
+}
+
+// Pure decision for a ghost holder once its live-commitment ids are known.
+// Guard: never free a ghost that still has live commitments (would strand an LP).
+function classifyGhostClaim({ code, holder, liveCommitIds }) {
+  const live = liveCommitIds || [];
+  if (live.length > 0) {
+    return { ok: false, reason: `${code} held by GHOST entity ${holder.id} (deal ${holder.airtable_deal_id} deleted) with ${live.length} live commitment(s) [${live.join(", ")}] — re-link them to a live deal in Airtable first; not archiving (would strand an LP)` };
+  }
+  return { ok: true, freeGhost: true };
+}
+
+// Pure archive-missing selection. Guards: empty fetch set → archive nothing
+// (never mass-delete); only rows that carry an airtable_id not present in the
+// fetch are stale.
+function selectStaleRows(rows, fetchedIds) {
+  if (!fetchedIds || fetchedIds.size === 0) return [];
+  return (rows || []).filter((r) => r && r.airtable_id && !fetchedIds.has(r.airtable_id));
+}
+
 async function claimVectorShortCode(code, dealAirtableId, fetchedDealIds) {
   const { data: holder, error } = await supabase
     .from("entities")
@@ -282,13 +325,9 @@ async function claimVectorShortCode(code, dealAirtableId, fetchedDealIds) {
     .is("archived_at", null)
     .maybeSingle();
   if (error) return { ok: false, reason: `lookup failed: ${error.message}` };
-  if (!holder) return { ok: true };                                  // code is free
-  if (holder.airtable_deal_id === dealAirtableId) return { ok: true }; // already ours
 
-  if (fetchedDealIds.has(holder.airtable_deal_id)) {
-    // A different LIVE deal already owns this Vector code → genuine >1-deal-per-vehicle.
-    return { ok: false, reason: `${code} already held by live deal ${holder.airtable_deal_id} (vehicle has >1 deal — needs manual resolution)` };
-  }
+  const decision = classifyVectorClaim({ code, holder, dealAirtableId, fetchedDealIds });
+  if (!decision.needsGhostCheck) return decision; // free / already-ours / live-duplicate
 
   // Holder's source deal is gone from Airtable → it's a ghost. Free it only if empty.
   const { data: liveCommits, error: cErr } = await supabase
@@ -297,13 +336,8 @@ async function claimVectorShortCode(code, dealAirtableId, fetchedDealIds) {
     .eq("entity_id", holder.id)
     .is("archived_at", null);
   if (cErr) return { ok: false, reason: `commitment check failed: ${cErr.message}` };
-  if (liveCommits && liveCommits.length > 0) {
-    const list = liveCommits.map((c) => c.airtable_id).join(", ");
-    return {
-      ok: false,
-      reason: `${code} held by GHOST entity ${holder.id} (deal ${holder.airtable_deal_id} deleted) with ${liveCommits.length} live commitment(s) [${list}] — re-link them to a live deal in Airtable first; not archiving (would strand an LP)`,
-    };
-  }
+  const ghost = classifyGhostClaim({ code, holder, liveCommitIds: (liveCommits || []).map((c) => c.airtable_id) });
+  if (!ghost.freeGhost) return ghost; // ghost has live commitments — don't strand an LP
 
   // Empty ghost: archive AND rename its short_code so the canonical code is truly free
   // (robust whether the unique index is partial on archived_at or not).
@@ -391,16 +425,14 @@ async function syncDeals() {
     // deal code. This overrides the auto code AND existing rows (see update branch),
     // so e.g. Project Prometheus II → FC-VECTOR-I and Replit → FC-VECTOR-IX, and any
     // future Vector deal self-maps. Uniqueness is resolved by claimVectorShortCode.
-    const vehicleAbbrv = f["Vehicle Name Abbrv"] ? String(f["Vehicle Name Abbrv"]).trim() : null;
-    const vecMatch = vehicleAbbrv && vehicleAbbrv.match(/^Vector\s+([IVXLC]+)$/i);
+    const vectorSeries = vectorSeriesFromVehicle(f["Vehicle Name Abbrv"]);
     let isVectorSeries = false;
-    if (vecMatch) {
-      const roman = vecMatch[1].toUpperCase();
-      const canonicalCode = `FC-VECTOR-${roman}`;
+    if (vectorSeries) {
+      const canonicalCode = vectorSeries.shortCode;
       const claim = await claimVectorShortCode(canonicalCode, airtable_id, fetchedDealIds);
       if (claim.ok) {
         short_code = canonicalCode;
-        entity_name = `FC Platform LP Vector ${roman} Series`;
+        entity_name = vectorSeries.name;
         isVectorSeries = true;
       } else {
         console.warn(`  ⚠ Vector mapping deferred for "${company_name}" (${airtable_id}): ${claim.reason}. Keeping short_code "${short_code}".`);
@@ -1120,7 +1152,7 @@ async function reconcileArchiveMissing(table, fetchedIds, label) {
     if (data.length < PAGE) break;
   }
 
-  const stale = rows.filter(r => !fetchedIds.has(r.airtable_id));
+  const stale = selectStaleRows(rows, fetchedIds);
 
   // Always log the count BEFORE acting.
   console.log(`  ${label}: ${stale.length} live row(s) with an airtable_id NOT in this run's fetch ` +
@@ -1259,4 +1291,7 @@ if (require.main === module) {
   });
 }
 
-module.exports = { normalizeCurrency, cappedCalled, feeAmount, mapInvestmentStatus, mapStage, mapInstrumentType, exitCodeFromStats };
+module.exports = {
+  normalizeCurrency, cappedCalled, feeAmount, mapInvestmentStatus, mapStage, mapInstrumentType, exitCodeFromStats,
+  vectorSeriesFromVehicle, classifyVectorClaim, classifyGhostClaim, selectStaleRows,
+};

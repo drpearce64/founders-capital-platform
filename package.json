@@ -9,7 +9,7 @@
     "start": "node scripts/start.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "test:logic": "node scripts/sync_logic.test.cjs && node scripts/fx_logic.test.cjs"
+    "test:logic": "node scripts/sync_logic.test.cjs && node scripts/fx_logic.test.cjs && node scripts/vehicle_archive_logic.test.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
