@@ -340,9 +340,20 @@ export default function PortfolioSummary() {
   }, [allInvestments, ycData]);
 
   if (loading) {
+    // Skeleton that mirrors the page layout instead of a blank screen.
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: BG }}>
-        <div className="text-sm" style={{ color: MUTED }}>Loading portfolio…</div>
+      <div className="min-h-screen p-8" style={{ background: BG }}>
+        <div className="h-6 w-56 rounded mb-6 animate-pulse" style={{ background: "rgba(0,0,0,0.08)" }} />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="rounded-xl p-5 animate-pulse" style={{ background: "rgba(0,0,0,0.05)", height: 96 }} />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="rounded-xl p-5 animate-pulse" style={{ background: "rgba(0,0,0,0.05)", height: 220 }} />
+          ))}
+        </div>
       </div>
     );
   }

@@ -51,6 +51,7 @@ export default function LPPortfolio() {
         commitments: [],
         total_committed: 0,
         total_called: 0,
+        total_fee: 0,
         total_outstanding: 0,
         vectors: [],
       };
@@ -60,6 +61,7 @@ export default function LPPortfolio() {
     acc[id].commitments.push(c);
     acc[id].total_committed += committed;
     acc[id].total_called += called;
+    acc[id].total_fee += Number(c.fee_amount || 0);
     acc[id].total_outstanding += committed - called;
     const label = vectorLabel(c.entities?.short_code);
     if (!acc[id].vectors.includes(label)) acc[id].vectors.push(label);
@@ -153,8 +155,9 @@ export default function LPPortfolio() {
             <tr>
               <th className="px-4 py-3 text-left">LP Name</th>
               <th className="px-4 py-3 text-left">Vectors</th>
-              <th className="px-4 py-3 text-right">Total Committed</th>
-              <th className="px-4 py-3 text-right">Total Called</th>
+              <th className="px-4 py-3 text-right">Committed</th>
+              <th className="px-4 py-3 text-right">Called (Capped)</th>
+              <th className="px-4 py-3 text-right">Access Fee</th>
               <th className="px-4 py-3 text-right">Outstanding</th>
               <th className="px-4 py-3 text-left">Status</th>
               <th className="px-4 py-3"></th>
@@ -162,9 +165,17 @@ export default function LPPortfolio() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+              [...Array(6)].map((_, i) => (
+                <tr key={i} className="border-t border-gray-100">
+                  {[...Array(8)].map((_, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <div className="h-4 rounded bg-gray-200 animate-pulse" style={{ width: j === 0 ? "70%" : "50%" }} />
+                    </td>
+                  ))}
+                </tr>
+              ))
             ) : investors.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No LPs found</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No LPs found</td></tr>
             ) : investors.map((lp: any) => {
               const isExpanded = expandedId === lp.investor_id;
               const badge = statusBadge(lp.total_called, lp.total_committed);
@@ -208,6 +219,9 @@ export default function LPPortfolio() {
                     <td className="px-4 py-3 text-right font-mono text-gray-700">
                       {fmtFull(lp.total_called)}
                     </td>
+                    <td className={`px-4 py-3 text-right font-mono ${lp.total_fee > 0 ? "text-violet-700" : "text-gray-400"}`}>
+                      {lp.total_fee > 0 ? fmtFull(lp.total_fee) : "—"}
+                    </td>
                     <td className={`px-4 py-3 text-right font-mono ${lp.total_outstanding > 0 ? "text-amber-600" : "text-gray-400"}`}>
                       {fmtFull(lp.total_outstanding)}
                     </td>
@@ -228,7 +242,7 @@ export default function LPPortfolio() {
                   {/* Expanded breakdown */}
                   {isExpanded && (
                     <tr key={`${lp.investor_id}-detail`}>
-                      <td colSpan={7} className="px-0 py-0">
+                      <td colSpan={8} className="px-0 py-0">
                         <div className="bg-violet-50 border-t border-violet-100 px-6 py-4">
                           <p className="text-xs font-semibold text-violet-800 uppercase tracking-wide mb-3">
                             {lp.full_name} — Position by Vector
